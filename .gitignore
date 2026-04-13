@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# 运行产物（视频/音频/字幕）
+workspace/
+runs/
+*.mp4
+*.mp3
+*.m4a
+*.wav
+*.srt
+*.vtt
+
+# 配置（含敏感信息）
+config.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Whisper 模型缓存
+*.bin
+*.pt

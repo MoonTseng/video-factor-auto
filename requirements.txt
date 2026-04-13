@@ -1,0 +1,22 @@
+# 日本美食/旅行二创管线 — 依赖
+# pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# ── 核心 ──
+pyyaml>=6.0
+httpx>=0.27
+
+# ── YouTube 下载 ──
+yt-dlp>=2024.0
+
+# ── 语音转录 ──
+faster-whisper>=1.0
+
+# ── LLM 文案生成 ──
+anthropic>=0.40
+
+# ── TTS 配音 ──
+edge-tts>=6.1          # 兜底 TTS
+# cosyvoice2            # 首选 TTS（需单独安装，见 README）
+
+# ── 视频处理 ──
+# ffmpeg                # 系统安装: brew install ffmpeg

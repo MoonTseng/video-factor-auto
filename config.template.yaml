@@ -1,0 +1,101 @@
+# ═══════════════════════════════════════════════════════════
+#  日本美食/旅行内容二创管线 — 配置文件模板
+# ═══════════════════════════════════════════════════════════
+# 复制为 config.yaml 并填写你的实际配置:
+#   cp config.template.yaml config.yaml
+
+# ── YouTube 视频发现与下载 ─────────────────────────────────
+youtube:
+  api_key: "YOUR_API_KEY"  # YouTube Data API v3 key（没有也能用内置话题库）
+  proxy: "socks5://127.0.0.1:7890"  # 代理，访问 YouTube 必须
+
+  # 日语搜索关键词（小众纪录片/美食风格）
+  search_queries:
+    - "天ぷら 職人"
+    - "ラーメン 名店 密着"
+    - "日本 田舎 旅"
+    - "一人旅 日本"
+    - "日本 食堂 ドキュメンタリー"
+    - "和食 ドキュメンタリー"
+    - "日本の小さな町"
+    - "築地 朝ごはん"
+    - "日本 夫婦 料理"
+    - "蕎麦 職人 こだわり"
+    - "寿司 職人 密着"
+    - "日本 温泉 旅館"
+    - "うどん 讃岐 手打ち"
+    - "おばあちゃん 料理"
+    - "深夜 屋台 ラーメン"
+
+  max_results_per_query: 5
+  min_view_count: 1000      # 最小播放量（太低可能质量差）
+  max_view_count: 100000    # 最大播放量（太高版权风险大）
+
+# ── Whisper 语音转录 ──────────────────────────────────────
+whisper:
+  model_size: "base"       # base/small/medium/large-v3 (越大越准但越慢)
+  device: "cpu"            # cpu / cuda（macOS 只能 cpu）
+  compute_type: "int8"     # int8 / float16 / float32
+
+# ── LLM 文案生成 ─────────────────────────────────────────
+llm:
+  # Bedrock 代理模式（通过公司代理访问 AWS Bedrock Claude）
+  backend: "bedrock_proxy"
+  bedrock_proxy:
+    base_url: "YOUR_BEDROCK_PROXY_URL"
+    auth_token: "YOUR_AUTH_TOKEN"
+    model: "us.anthropic.claude-opus-4-6-v1"  # Bedrock 模型 ID
+  # 直接 Anthropic API（备选）
+  api_key: ""
+  model: "claude-sonnet-4-20250514"
+  # 二创文案风格设定
+  style: "口语化、亲切自然、像朋友聊天，适当幽默，带知识科普"
+  target_audience: "B站美食/旅行爱好者"
+
+# ── TTS 配音 ─────────────────────────────────────────────
+tts:
+  backend: "auto"   # auto / cosyvoice2 / edge-tts
+
+  cosyvoice2:
+    api_url: "http://127.0.0.1:50000"  # CosyVoice2 HTTP 服务地址
+    mode: "sft"          # sft / zero_shot / cross_lingual
+    speaker: "中文男"     # SFT 模式的预训练音色
+    ref_audio: ""        # zero_shot 模式的参考音频路径
+    ref_text: ""         # 参考音频对应的文字
+    model_dir: "pretrained_models/CosyVoice2-0.5B"
+
+  edge_tts:
+    voice: "zh-CN-YunjianNeural"  # 云健-男声（沉稳型）
+    # 其他可选男声:
+    # zh-CN-YunxiNeural    — 云希（年轻活力）
+    # zh-CN-YunjianNeural  — 云健（沉稳大气）
+    # zh-CN-YunyangNeural  — 云扬（新闻播报风）
+    rate: "+5%"
+    pitch: "-5Hz"
+
+# ── 视频合成 ─────────────────────────────────────────────
+video:
+  resolution: "1920x1080"
+  fps: 30
+
+  subtitle:
+    font: "PingFang SC"
+    font_size: 18               # B站风格：偏小字号，不抢画面
+    font_color: "&H00FFFFFF"    # ASS 格式：白色
+    outline_width: 2            # 黑色描边
+    shadow_depth: 1             # 阴影深度
+    margin_bottom: 30           # 底部居中
+
+  anti_copyright:
+    crop_percent: 0.97        # 裁切掉 3%
+    brightness_adjust: 0.01   # 微调亮度
+    mirror: false             # 是否水平翻转
+
+  # 音频模式：original=保留原声, dubbed=中文配音替换, mixed=原声+配音叠加
+  audio_mode: "original"
+
+  watermark_text: ""  # 留空不加水印
+
+# ── 输出设置 ─────────────────────────────────────────────
+output:
+  runs_dir: "runs"  # 每次运行的输出目录
