@@ -1,4 +1,4 @@
-"""YouTube 视频发现 + 下载 — 搜索小众日本美食纪录片/旅行视频并下载"""
+"""YouTube 视频发现 + 下载 — 支持日本美食纪录片搬运 & 日韩预告片搜集"""
 
 import json
 import logging
@@ -9,6 +9,42 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def _get_ytdlp_bin() -> str:
+    """获取 yt-dlp 可执行文件路径（优先 .venv 内的）"""
+    # 优先用项目 .venv 里的 yt-dlp
+    venv_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv", "bin", "yt-dlp")
+    if os.path.isfile(venv_bin):
+        return venv_bin
+    # fallback: 系统 PATH
+    return "yt-dlp"
+
+
+def search_youtube(config: dict, query: str, max_results: int = 5) -> list[dict]:
+    """
+    通用 YouTube 搜索（yt-dlp 驱动）。
+    返回 [{video_id, title, channel, url, duration, view_count, upload_date}, ...]
+    """
+    yt_cfg = config.get("youtube", {})
+    proxy = yt_cfg.get("proxy", "")
+
+    results = _ytdlp_search(query, proxy, max_results)
+    videos = []
+    for r in results:
+        vid = r.get("id", "")
+        if not vid:
+            continue
+        videos.append({
+            "video_id": vid,
+            "title": r.get("title", ""),
+            "channel": r.get("channel", r.get("uploader", "")),
+            "url": f"https://www.youtube.com/watch?v={vid}",
+            "duration": r.get("duration", 0),
+            "view_count": r.get("view_count", 0),
+            "upload_date": r.get("upload_date", ""),
+        })
+    return videos
 
 YT_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 YT_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
@@ -34,9 +70,230 @@ DEFAULT_SEARCH_QUERIES = [
     "日本 商店街 散歩",     # 日本商店街散步
     "おばあちゃん 料理",    # 奶奶的料理
     "日本 離島 旅",        # 日本离岛旅行
-    "焼き鳥 職人",         # 烤�的匠人
+    "焼き鳥 職人",         # 烤鸡肉串匠人
 ]
 
+# ── 预告片搜索关键词（按平台分组） ─────────────────────
+TRAILER_QUERIES = {
+    "netflix_japan": [
+        "Netflix Japan 2026 予告",
+        "Netflix 日本 2026 新作 予告編",
+        "Netflix Japan 2026 trailer",
+        "Netflixジャパン 2026 ドラマ 予告",
+        "Netflix 日本映画 2026 予告",
+    ],
+    "disney_japan": [
+        "Disney+ Japan 2026 予告",
+        "ディズニープラス 2026 新作 予告編",
+        "Disney Plus 日本 2026 trailer",
+        "ディズニープラス 韓ドラ 2026",
+    ],
+    "hulu_japan": [
+        "Hulu Japan 2026 予告",
+        "Hulu ジャパン 新作ドラマ 2026",
+        "Hulu Japan 2026 original trailer",
+    ],
+    "netflix_korea": [
+        "Netflix Korea 2026 예고편",
+        "넷플릭스 2026 한국 드라마 예고",
+        "Netflix Korean drama 2026 trailer",
+        "Netflix 韓国ドラマ 2026 予告",
+    ],
+}
+
+
+# ══════════════════════════════════════════════════════════════
+#  预告片搜索 & 下载（新功能）
+# ══════════════════════════════════════════════════════════════
+
+def search_trailers(config: dict, platform: str = "all",
+                    max_per_query: int = 10) -> list[dict]:
+    """
+    使用 yt-dlp 搜索各平台的 2026 年日韩预告片。
+    
+    参数:
+        config: 配置字典
+        platform: "all" 或具体平台名 (netflix_japan/disney_japan/hulu_japan/netflix_korea)
+        max_per_query: 每个关键词最多返回几条
+    返回:
+        [{video_id, title, channel, url, duration, platform, upload_date}, ...]
+    """
+    yt_cfg = config.get("youtube", {})
+    proxy = yt_cfg.get("proxy", "")
+    
+    # 也可从 config.trailer.search_queries 覆盖
+    trailer_cfg = config.get("trailer", {})
+    queries_map = trailer_cfg.get("search_queries", TRAILER_QUERIES)
+    
+    if platform == "all":
+        platforms = list(queries_map.keys())
+    else:
+        platforms = [platform]
+    
+    all_results = []
+    seen_ids = set()
+    
+    for plat in platforms:
+        queries = queries_map.get(plat, [])
+        for query in queries:
+            try:
+                results = _ytdlp_search(query, proxy, max_per_query)
+                for r in results:
+                    vid = r.get("id", "")
+                    if vid and vid not in seen_ids:
+                        seen_ids.add(vid)
+                        all_results.append({
+                            "video_id": vid,
+                            "title": r.get("title", ""),
+                            "channel": r.get("channel", r.get("uploader", "")),
+                            "url": f"https://www.youtube.com/watch?v={vid}",
+                            "duration": r.get("duration", 0),
+                            "platform": plat,
+                            "upload_date": r.get("upload_date", ""),
+                            "view_count": r.get("view_count", 0),
+                            "search_query": query,
+                        })
+            except Exception as e:
+                logger.warning(f"搜索 '{query}' 失败: {e}")
+                continue
+    
+    # 按上传日期倒序（最新的在前）
+    all_results.sort(key=lambda x: x.get("upload_date", ""), reverse=True)
+    logger.info(f"🔍 预告片搜索完成: {len(all_results)} 条 ({', '.join(platforms)})")
+    return all_results
+
+
+def download_trailer(config: dict, trailer_info: dict, output_dir: str) -> dict:
+    """
+    下载预告片（最高画质，up to 1080p）。
+    
+    参数:
+        config: 配置字典
+        trailer_info: search_trailers 返回的单条记录
+        output_dir: 输出目录
+    返回:
+        {video_path, audio_path, duration, title, video_id, url, platform}
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    yt_cfg = config.get("youtube", {})
+    proxy = yt_cfg.get("proxy", "")
+    
+    video_url = trailer_info.get("url", "")
+    video_id = trailer_info.get("video_id", "unknown")
+    platform = trailer_info.get("platform", "unknown")
+    
+    if not video_url:
+        raise ValueError(f"预告片 URL 为空: {trailer_info}")
+    
+    video_path = os.path.join(output_dir, f"{video_id}.mp4")
+    audio_path = os.path.join(output_dir, f"{video_id}_audio.m4a")
+    
+    logger.info(f"📥 下载预告片: {trailer_info.get('title', video_url)}")
+    
+    # 尽量高清：1080p > 720p > best
+    fmt = (
+        "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo[height<=1080]+bestaudio/"
+        "best[height<=1080]/best"
+    )
+    
+    cmd = [
+        _get_ytdlp_bin(),
+        "-f", fmt,
+        "--merge-output-format", "mp4",
+        "-o", video_path,
+        "--no-playlist",
+        "--no-warnings",
+    ]
+    
+    if proxy:
+        cmd.extend(["--proxy", proxy])
+    
+    cmd.append(video_url)
+    
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if result.returncode != 0:
+        logger.error(f"yt-dlp 下载失败: {result.stderr[-500:]}")
+        raise RuntimeError(f"yt-dlp 下载失败: {result.stderr[-200:]}")
+    
+    # 提取纯音频（给 Whisper 用）
+    logger.info("🎵 提取音频轨道...")
+    audio_cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-vn", "-acodec", "copy",
+        audio_path,
+    ]
+    audio_result = subprocess.run(audio_cmd, capture_output=True, text=True, timeout=120)
+    if audio_result.returncode != 0:
+        audio_path = audio_path.replace(".m4a", ".mp3")
+        audio_cmd = [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-vn", "-acodec", "libmp3lame", "-q:a", "2",
+            audio_path,
+        ]
+        subprocess.run(audio_cmd, capture_output=True, text=True, timeout=120)
+    
+    duration = _get_duration(video_path)
+    logger.info(f"✅ 预告片下载完成: {video_path} ({duration:.0f}s)")
+    
+    return {
+        "video_path": video_path,
+        "audio_path": audio_path,
+        "duration": duration,
+        "title": trailer_info.get("title", ""),
+        "video_id": video_id,
+        "url": video_url,
+        "platform": platform,
+    }
+
+
+def _ytdlp_search(query: str, proxy: str = "", max_results: int = 10) -> list[dict]:
+    """用 yt-dlp 搜索 YouTube（不下载，只获取元数据）"""
+    cmd = [
+        _get_ytdlp_bin(),
+        "--flat-playlist",
+        "--dump-json",
+        f"ytsearch{max_results}:{query}",
+    ]
+    if proxy:
+        cmd.extend(["--proxy", proxy])
+    
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    if result.returncode != 0:
+        raise RuntimeError(f"yt-dlp 搜索失败: {result.stderr[-200:]}")
+    
+    items = []
+    for line in result.stdout.strip().split("\n"):
+        line = line.strip()
+        if line:
+            try:
+                items.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return items
+
+
+def format_trailer_list(trailers: list[dict]) -> str:
+    """格式化预告片列表，便于展示"""
+    lines = []
+    for i, t in enumerate(trailers, 1):
+        dur = t.get("duration", 0)
+        dur_str = f"{int(dur) // 60}:{int(dur) % 60:02d}" if dur else "?"
+        views = t.get("view_count", 0)
+        view_str = f"{views:,}" if views else "?"
+        lines.append(
+            f"{i}. [{t['platform']}] {t['title']}\n"
+            f"   频道: {t['channel']} | 时长: {dur_str} | "
+            f"播放: {view_str} | {t['url']}"
+        )
+    return "\n".join(lines)
+
+
+# ══════════════════════════════════════════════════════════════
+#  原有功能：美食/旅行视频搜索（保持不变）
+# ══════════════════════════════════════════════════════════════
 
 def fetch_trending_topics(config: dict) -> list[dict]:
     """
@@ -48,13 +305,11 @@ def fetch_trending_topics(config: dict) -> list[dict]:
     api_key = yt_cfg.get("api_key", "")
     proxy = yt_cfg.get("proxy", "")
 
-    # 先尝试 API
     if api_key and api_key != "YOUR_API_KEY":
         topics = _fetch_via_api(api_key, yt_cfg, proxy)
         if topics:
             return topics
 
-    # API 失败时，使用内置视频列表
     logger.warning("⚠️ YouTube API 不可用，使用内置视频列表")
     return _get_builtin_topics()
 
@@ -77,11 +332,10 @@ def download_video(config: dict, topic: dict, output_dir: str) -> dict:
     video_path = os.path.join(output_dir, f"source_{video_id}.mp4")
     audio_path = os.path.join(output_dir, f"source_{video_id}_audio.m4a")
 
-    # ── 下载视频（带音频，后面分离） ──
     logger.info(f"📥 下载视频: {topic.get('title', video_url)}")
 
     cmd = [
-        "yt-dlp",
+        _get_ytdlp_bin(),
         "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
         "--merge-output-format", "mp4",
         "-o", video_path,
@@ -99,31 +353,25 @@ def download_video(config: dict, topic: dict, output_dir: str) -> dict:
         logger.error(f"yt-dlp 下载失败: {result.stderr[-500:]}")
         raise RuntimeError(f"yt-dlp 下载失败: {result.stderr[-200:]}")
 
-    # ── 提取纯音频（给 whisper 用） ──
     logger.info("🎵 提取音频轨道...")
     audio_cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
-        "-vn",             # 去视频
-        "-acodec", "copy", # 不转码，直接拷贝
+        "-vn", "-acodec", "copy",
         audio_path,
     ]
     audio_result = subprocess.run(audio_cmd, capture_output=True, text=True, timeout=120)
     if audio_result.returncode != 0:
-        # 如果 copy 失败，尝试转为 mp3
         audio_path = audio_path.replace(".m4a", ".mp3")
         audio_cmd = [
             "ffmpeg", "-y",
             "-i", video_path,
-            "-vn",
-            "-acodec", "libmp3lame", "-q:a", "2",
+            "-vn", "-acodec", "libmp3lame", "-q:a", "2",
             audio_path,
         ]
         subprocess.run(audio_cmd, capture_output=True, text=True, timeout=120)
 
-    # ── 获取视频时长 ──
     duration = _get_duration(video_path)
-
     logger.info(f"✅ 下载完成: {video_path} ({duration:.0f}s)")
 
     return {
@@ -137,7 +385,6 @@ def download_video(config: dict, topic: dict, output_dir: str) -> dict:
 
 
 # ── YouTube API 搜索 ─────────────────────────────────────
-
 def _fetch_via_api(api_key: str, yt_cfg: dict, proxy: str = "") -> list[dict]:
     """通过 YouTube Data API 搜索小众日本美食/旅行视频"""
     queries = yt_cfg.get("search_queries", DEFAULT_SEARCH_QUERIES)
@@ -145,7 +392,6 @@ def _fetch_via_api(api_key: str, yt_cfg: dict, proxy: str = "") -> list[dict]:
     min_views = yt_cfg.get("min_view_count", 1000)
     max_views = yt_cfg.get("max_view_count", 100000)
 
-    # 搜索最近 6 个月的视频
     published_after = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
 
     all_topics = []
@@ -162,11 +408,11 @@ def _fetch_via_api(api_key: str, yt_cfg: dict, proxy: str = "") -> list[dict]:
                 "part": "snippet",
                 "q": query,
                 "type": "video",
-                "order": "date",  # 按发布时间排序，更容易找到小众内容
+                "order": "date",
                 "maxResults": max_per_query,
                 "publishedAfter": published_after,
                 "relevanceLanguage": "ja",
-                "videoDuration": "medium",  # 4-20分钟
+                "videoDuration": "medium",
                 "key": api_key,
             })
             if search_resp.status_code == 403:
@@ -188,7 +434,6 @@ def _fetch_via_api(api_key: str, yt_cfg: dict, proxy: str = "") -> list[dict]:
             if not video_ids:
                 continue
 
-            # 获取统计数据
             stats_resp = client.get(YT_VIDEOS_URL, params={
                 "part": "statistics,contentDetails",
                 "id": ",".join(video_ids),
@@ -201,7 +446,6 @@ def _fetch_via_api(api_key: str, yt_cfg: dict, proxy: str = "") -> list[dict]:
                 stats = item["statistics"]
                 view_count = int(stats.get("viewCount", 0))
 
-                # 关键过滤：只要小众内容（1k-100k 播放）
                 if view_count < min_views or view_count > max_views:
                     continue
 
@@ -227,115 +471,47 @@ def _fetch_via_api(api_key: str, yt_cfg: dict, proxy: str = "") -> list[dict]:
             continue
 
     client.close()
-
-    # 按播放量排序（小众但有一定观看）
     all_topics.sort(key=lambda x: x["view_count"], reverse=True)
     return _deduplicate(all_topics)[:20]
 
 
 # ── 内置视频列表（兜底用） ────────────────────────────────
-
 def _get_builtin_topics() -> list[dict]:
-    """
-    内置的日本美食/旅行视频列表 — API 不可用时的兜底。
-    这些是真实的 YouTube 小众视频 URL。
-    """
+    """内置的日本美食/旅行视频列表 — API 不可用时的兜底。"""
     topics = [
         {
             "title": "夫婦で守り続ける天ぷら屋 — 40年の味",
-            "description": "东京下町的一对夫妻经营了40年的天妇罗小店，每天坚持手工制作面衣。",
+            "description": "东京下町的一对夫妻经营了40年的天妇罗小店。",
             "view_count": 15000,
             "suggested_theme": "夫妻二人坚守40年的天妇罗小店",
-            "video_id": "builtin_tempura",
-            "url": "",  # 需要用户填写实际 URL
+            "video_id": "builtin_tempura", "url": "",
         },
         {
-            "title": "行列のできるラーメン屋の1日 — 美人女将の奮闘",
-            "description": "大排长龙的拉面店，美女老板娘的一天跟拍。凌晨4点开始熬汤。",
+            "title": "行列のできるラーメン屋の1日",
+            "description": "大排长龙的拉面店，美女老板娘的一天跟拍。",
             "view_count": 25000,
             "suggested_theme": "美女拉面店老板娘的一天",
-            "video_id": "builtin_ramen",
-            "url": "",
+            "video_id": "builtin_ramen", "url": "",
         },
         {
             "title": "日本の離島で一人旅 — 人口30人の島",
-            "description": "日本一座只有30人的小岛，一个人的旅行纪录。宁静的渔村生活。",
+            "description": "日本一座只有30人的小岛，一个人的旅行纪录。",
             "view_count": 8000,
             "suggested_theme": "人口仅30人的日本离岛独旅",
-            "video_id": "builtin_island",
-            "url": "",
-        },
-        {
-            "title": "築地場外市場の朝ごはん散歩",
-            "description": "清晨的筑地场外市场，探访各种早餐名店。玉子烧、海鲜丼、寿司。",
-            "view_count": 35000,
-            "suggested_theme": "筑地市场清晨早餐散步",
-            "video_id": "builtin_tsukiji",
-            "url": "",
-        },
-        {
-            "title": "讃岐うどん巡り — 地元民が通う隠れた名店",
-            "description": "赞岐乌冬面巡礼，当地人才知道的隐藏名店。手打乌冬面的制作过程。",
-            "view_count": 12000,
-            "suggested_theme": "赞岐乌冬面巡礼：当地人的隐藏名店",
-            "video_id": "builtin_udon",
-            "url": "",
-        },
-        {
-            "title": "日本の田舎の商店街を歩く — 昭和レトロな街並み",
-            "description": "走进日本乡下的昭和复古商店街，时间仿佛停在了几十年前。",
-            "view_count": 6000,
-            "suggested_theme": "走进昭和复古商店街，时间仿佛停止",
-            "video_id": "builtin_shotengai",
-            "url": "",
-        },
-        {
-            "title": "おばあちゃんの台所 — 90歳の料理人",
-            "description": "90岁的奶奶仍然每天在厨房做料理。朴实无华但温暖人心的家庭味道。",
-            "view_count": 20000,
-            "suggested_theme": "90岁奶奶的厨房：最温暖的家庭味道",
-            "video_id": "builtin_grandma",
-            "url": "",
-        },
-        {
-            "title": "深夜の屋台ラーメン — 福岡中洲の夜",
-            "description": "福冈中洲的深夜拉面屋台，河边的露天小摊。博多拉面和夜晚的故事。",
-            "view_count": 18000,
-            "suggested_theme": "福冈深夜屋台：河边的一碗拉面",
-            "video_id": "builtin_yatai",
-            "url": "",
-        },
-        {
-            "title": "北海道の漁師町で朝市を歩く",
-            "description": "北海道渔师町的清晨朝市。新鲜的螃蟹、海胆、�的鱼子。",
-            "view_count": 10000,
-            "suggested_theme": "北海道渔港朝市：海鲜天堂",
-            "video_id": "builtin_hokkaido",
-            "url": "",
-        },
-        {
-            "title": "京都の路地裏 — 知られざる老舗の和菓子屋",
-            "description": "京都小巷深处，一家不为人知的百年和果子老铺。匠人的手艺与执着。",
-            "view_count": 7000,
-            "suggested_theme": "京都小巷深处的百年和果子铺",
-            "video_id": "builtin_wagashi",
-            "url": "",
+            "video_id": "builtin_island", "url": "",
         },
     ]
-
-    for i, t in enumerate(topics):
+    for t in topics:
         t.setdefault("channel", "内置话题库")
         t.setdefault("published_at", datetime.now().isoformat())
         t.setdefault("like_count", 0)
         t.setdefault("comment_count", 0)
         t.setdefault("duration", "PT12M")
         t.setdefault("search_query", "builtin")
-
     return topics
 
 
 # ── 工具函数 ──────────────────────────────────────────────
-
 def _deduplicate(topics: list[dict]) -> list[dict]:
     """去重"""
     seen = set()

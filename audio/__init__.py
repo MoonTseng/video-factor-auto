@@ -1,13 +1,17 @@
-"""TTS 配音模块 — 多后端：CosyVoice2（首选）/ Edge-TTS（兜底）"""
+"""TTS 配音模块 — 多后端：GLM-TTS / TTSMaker / CosyVoice2 / Edge-TTS（兜底）"""
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import subprocess
 import struct
+import time
 import wave
 from pathlib import Path
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +33,15 @@ def generate_audio_segments(config: dict, segments: list[dict], output_dir: str)
     backend = tts_cfg.get("backend", "auto")
 
     if backend == "auto":
-        backend = _detect_backend()
+        backend = _detect_backend(tts_cfg)
 
     logger.info(f"🔊 TTS 后端: {backend}")
 
-    if backend == "cosyvoice2":
+    if backend == "glm-tts":
+        return _generate_glm_tts(tts_cfg, segments, output_dir)
+    elif backend == "ttsmaker":
+        return _generate_ttsmaker(tts_cfg, segments, output_dir)
+    elif backend == "cosyvoice2":
         return _generate_cosyvoice2(tts_cfg, segments, output_dir)
     elif backend == "edge-tts":
         return _generate_edge_tts(tts_cfg, segments, output_dir)
@@ -41,8 +49,22 @@ def generate_audio_segments(config: dict, segments: list[dict], output_dir: str)
         raise ValueError(f"不支持的 TTS 后端: {backend}")
 
 
-def _detect_backend() -> str:
-    """检测可用的 TTS 后端"""
+def _detect_backend(tts_cfg: dict = None) -> str:
+    """检测可用的 TTS 后端，优先级: GLM-TTS > CosyVoice2 > Edge-TTS"""
+    tts_cfg = tts_cfg or {}
+
+    # 0. 检查 GLM-TTS（有 API key 即可用）
+    glm_cfg = tts_cfg.get("glm_tts", {})
+    if glm_cfg.get("api_key"):
+        logger.info("✅ 检测到 GLM-TTS 配置（智谱 API）")
+        return "glm-tts"
+
+    # 0.5 检查 TTSMaker（有 token 即可用）
+    ttsmaker_cfg = tts_cfg.get("ttsmaker", {})
+    if ttsmaker_cfg.get("token"):
+        logger.info("✅ 检测到 TTSMaker 配置")
+        return "ttsmaker"
+
     # 1. 检查 CosyVoice2
     try:
         # 检查 CosyVoice2 HTTP 服务是否在运行
@@ -70,7 +92,131 @@ def _detect_backend() -> str:
     except ImportError:
         pass
 
-    raise RuntimeError("没有可用的 TTS 后端！请安装 CosyVoice2 或 edge-tts")
+    raise RuntimeError("没有可用的 TTS 后端！请配置 GLM-TTS API Key、安装 CosyVoice2 或 edge-tts")
+
+
+# ══════════════════════════════════════════════════════════
+#  GLM-TTS 后端（智谱 AI — 超拟人语音合成）
+# ══════════════════════════════════════════════════════════
+
+GLM_TTS_URL = "https://open.bigmodel.cn/api/paas/v4/audio/speech"
+GLM_MAX_INPUT_LEN = 1024  # API 限制单次最大 1024 字符
+
+
+def _generate_glm_tts(tts_cfg: dict, segments: list[dict], output_dir: str) -> list[dict]:
+    """
+    GLM-TTS 语音合成 — 智谱 AI 的超拟人 TTS。
+    特性：情感表达强、语调自然、支持多音色。
+    API: POST /paas/v4/audio/speech, 返回 wav 二进制。
+    """
+    glm_cfg = tts_cfg.get("glm_tts", {})
+    api_key = glm_cfg.get("api_key", "")
+    voice = glm_cfg.get("voice", "tongtong")  # 默认彤彤
+    speed = glm_cfg.get("speed", 1.0)
+    volume = glm_cfg.get("volume", 1.0)
+
+    if not api_key:
+        raise ValueError("GLM-TTS 需要 API Key，请在 config.yaml tts.glm_tts.api_key 中配置")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    results = []
+
+    for i, seg in enumerate(segments):
+        text = seg["text"].strip()
+        if not text:
+            continue
+
+        output_path = os.path.join(output_dir, f"tts_{i:03d}.wav")
+        logger.info(f"  🎤 [{i+1}/{len(segments)}] GLM-TTS ({voice}): {text[:40]}...")
+
+        try:
+            # GLM-TTS 限制 1024 字符，超长则截断（一般一段不会超）
+            if len(text) > GLM_MAX_INPUT_LEN:
+                logger.warning(f"  ⚠️ 文本超长 ({len(text)} 字)，截断至 {GLM_MAX_INPUT_LEN}")
+                text = text[:GLM_MAX_INPUT_LEN]
+
+            payload = {
+                "model": "glm-tts",
+                "input": text,
+                "voice": voice,
+                "speed": speed,
+                "volume": volume,
+                "response_format": "wav",
+            }
+
+            t0 = time.time()
+            resp = httpx.post(
+                GLM_TTS_URL,
+                headers=headers,
+                json=payload,
+                timeout=60,
+            )
+            t1 = time.time()
+
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "")
+                if "audio" in content_type or "octet-stream" in content_type:
+                    # 直接返回音频二进制
+                    with open(output_path, "wb") as f:
+                        f.write(resp.content)
+                else:
+                    # 可能返回 JSON 包含 base64
+                    try:
+                        data = resp.json()
+                        if "audio" in data:
+                            audio_bytes = base64.b64decode(data["audio"])
+                            with open(output_path, "wb") as f:
+                                f.write(audio_bytes)
+                        else:
+                            logger.error(f"  GLM-TTS 返回格式异常: {str(data)[:200]}")
+                            continue
+                    except Exception:
+                        # 尝试直接写入
+                        with open(output_path, "wb") as f:
+                            f.write(resp.content)
+
+                size_kb = os.path.getsize(output_path) / 1024
+                logger.info(f"  ✅ [{i+1}] {t1-t0:.1f}s, {size_kb:.0f}KB")
+            else:
+                error_text = resp.text[:300]
+                logger.error(f"  ❌ GLM-TTS API 错误 [{resp.status_code}]: {error_text}")
+                # 如果是限流，等一下再试
+                if resp.status_code == 429:
+                    logger.info("  ⏳ 限流，等待 5 秒...")
+                    time.sleep(5)
+                    # 重试一次
+                    resp = httpx.post(GLM_TTS_URL, headers=headers, json=payload, timeout=60)
+                    if resp.status_code == 200:
+                        with open(output_path, "wb") as f:
+                            f.write(resp.content)
+                    else:
+                        continue
+                else:
+                    continue
+
+        except httpx.TimeoutException:
+            logger.error(f"  ⏰ GLM-TTS 超时 (段 {i})")
+            continue
+        except Exception as e:
+            logger.error(f"  ❌ GLM-TTS 合成失败 (段 {i}): {e}")
+            continue
+
+        duration = _get_audio_duration(output_path)
+        results.append({
+            "index": i,
+            "audio_path": output_path,
+            "text": text,
+            "start_time": seg["start_time"],
+            "end_time": seg["end_time"],
+            "duration": duration,
+        })
+
+    logger.info(f"✅ GLM-TTS 合成完成: {len(results)}/{len(segments)} 段")
+    return results
 
 
 # ══════════════════════════════════════════════════════════
@@ -240,6 +386,147 @@ def _cosyvoice2_local(cosyvoice_cfg: dict, mode: str, speaker: str,
 
     logger.info(f"✅ CosyVoice2 本地合成完成: {len(results)}/{len(segments)} 段")
     return results
+
+
+# ══════════════════════════════════════════════════════════
+#  TTSMaker 后端（免费 API，语音质量较高）
+# ══════════════════════════════════════════════════════════
+
+TTSMAKER_API_URL = "https://api.ttsmaker.cn/v1/create-tts-order"
+TTSMAKER_TOKEN_STATUS_URL = "https://api.ttsmaker.cn/v1/get-token-status"
+
+
+def _generate_ttsmaker(tts_cfg: dict, segments: list[dict], output_dir: str) -> list[dict]:
+    """
+    TTSMaker TTS — 免费在线 API，质量优于 Edge-TTS。
+    免费配额：50,000 字符/周期（约 28 天）。
+    API: POST /v1/create-tts-order，返回音频 URL。
+    推荐音色：15032 (阿伟v2 长文版, 单次 ≤10000 字符)
+    """
+    ttsmaker_cfg = tts_cfg.get("ttsmaker", {})
+    token = ttsmaker_cfg.get("token", "ttsmaker_demo_token")
+    voice_id = ttsmaker_cfg.get("voice_id", 15032)  # 阿伟v2 长文版
+    audio_format = ttsmaker_cfg.get("audio_format", "mp3")
+    audio_speed = ttsmaker_cfg.get("audio_speed", 1.0)
+    audio_volume = ttsmaker_cfg.get("audio_volume", 0)  # 0=原始音量
+    paragraph_pause = ttsmaker_cfg.get("paragraph_pause_time", 0)
+
+    # 先查配额
+    try:
+        status_resp = httpx.post(TTSMAKER_TOKEN_STATUS_URL,
+                                  json={"token": token}, timeout=10)
+        status = status_resp.json().get("token_status", {})
+        available = status.get("current_cycle_characters_available", 0)
+        total_chars = sum(len(seg["text"].strip()) for seg in segments)
+        logger.info(f"📊 TTSMaker 配额: 剩余 {available} 字符, 本次需要 {total_chars} 字符")
+        if available < total_chars:
+            logger.warning(f"⚠️ TTSMaker 配额不足 (需 {total_chars}, 剩 {available})，"
+                          f"将在配额耗尽后降级到 Edge-TTS")
+    except Exception as e:
+        logger.warning(f"⚠️ TTSMaker 配额查询失败: {e}")
+
+    results = []
+    fallback_to_edge = False
+
+    for i, seg in enumerate(segments):
+        text = seg["text"].strip()
+        if not text:
+            continue
+
+        ext = audio_format if audio_format in ("mp3", "wav", "ogg") else "mp3"
+        output_path = os.path.join(output_dir, f"tts_{i:03d}.{ext}")
+        logger.info(f"  🎤 [{i+1}/{len(segments)}] TTSMaker: {text[:40]}...")
+
+        if fallback_to_edge:
+            # 配额耗尽，降级到 Edge-TTS
+            _edge_tts_single(tts_cfg, seg, output_path, i, len(segments))
+            duration = _get_audio_duration(output_path)
+            results.append({
+                "index": i, "audio_path": output_path, "text": text,
+                "start_time": seg["start_time"], "end_time": seg["end_time"],
+                "duration": duration,
+            })
+            continue
+
+        try:
+            payload = {
+                "token": token,
+                "text": text,
+                "voice_id": voice_id,
+                "audio_format": audio_format,
+                "audio_speed": audio_speed,
+                "audio_volume": audio_volume,
+                "text_paragraph_pause_time": paragraph_pause,
+            }
+
+            t0 = time.time()
+            resp = httpx.post(TTSMAKER_API_URL, json=payload, timeout=60)
+            data = resp.json()
+            t1 = time.time()
+
+            if data.get("status") == "success" and data.get("audio_file_url"):
+                # 下载音频文件
+                audio_url = data["audio_file_url"]
+                audio_resp = httpx.get(audio_url, timeout=30)
+                with open(output_path, "wb") as f:
+                    f.write(audio_resp.content)
+
+                size_kb = os.path.getsize(output_path) / 1024
+                chars_used = data.get("tts_order_characters", len(text))
+                logger.info(f"  ✅ [{i+1}] {t1-t0:.1f}s, {size_kb:.0f}KB, {chars_used}字符")
+            else:
+                error_code = data.get("error_code", "UNKNOWN")
+                error_msg = data.get("error_details", "未知错误")
+                logger.warning(f"  ⚠️ TTSMaker 错误 [{error_code}]: {error_msg}")
+
+                if "QUOTA" in str(error_code).upper() or "CHARACTER" in str(error_code).upper():
+                    logger.info("  🔄 配额耗尽，后续段降级到 Edge-TTS")
+                    fallback_to_edge = True
+                    _edge_tts_single(tts_cfg, seg, output_path, i, len(segments))
+                else:
+                    # 其他错误也用 Edge-TTS 兜底
+                    _edge_tts_single(tts_cfg, seg, output_path, i, len(segments))
+
+        except httpx.TimeoutException:
+            logger.error(f"  ⏰ TTSMaker 超时 (段 {i})，降级 Edge-TTS")
+            _edge_tts_single(tts_cfg, seg, output_path, i, len(segments))
+        except Exception as e:
+            logger.error(f"  ❌ TTSMaker 失败 (段 {i}): {e}，降级 Edge-TTS")
+            _edge_tts_single(tts_cfg, seg, output_path, i, len(segments))
+
+        duration = _get_audio_duration(output_path)
+        results.append({
+            "index": i, "audio_path": output_path, "text": text,
+            "start_time": seg["start_time"], "end_time": seg["end_time"],
+            "duration": duration,
+        })
+
+        # TTSMaker 限流：每次请求间隔避免太快
+        if i < len(segments) - 1 and not fallback_to_edge:
+            time.sleep(1)
+
+    logger.info(f"✅ TTSMaker 合成完成: {len(results)}/{len(segments)} 段")
+    return results
+
+
+def _edge_tts_single(tts_cfg: dict, seg: dict, output_path: str, idx: int, total: int):
+    """单段 Edge-TTS 降级合成"""
+    import edge_tts
+
+    edge_cfg = tts_cfg.get("edge_tts", {})
+    voice = edge_cfg.get("voice", "zh-CN-YunjianNeural")
+    rate = edge_cfg.get("rate", "+5%")
+    pitch = edge_cfg.get("pitch", "-5Hz")
+
+    text = seg["text"].strip()
+    logger.info(f"  🎤 [{idx+1}/{total}] Edge-TTS (降级): {text[:30]}...")
+
+    # 确保输出是 mp3
+    if not output_path.endswith(".mp3"):
+        output_path = output_path.rsplit(".", 1)[0] + ".mp3"
+
+    communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, pitch=pitch)
+    asyncio.run(communicate.save(output_path))
 
 
 # ══════════════════════════════════════════════════════════

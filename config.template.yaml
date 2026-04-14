@@ -1,13 +1,50 @@
 # ═══════════════════════════════════════════════════════════
-#  日本美食/旅行内容二创管线 — 配置文件模板
+#  日本美食/旅行内容二创管线 — 配置文件
 # ═══════════════════════════════════════════════════════════
-# 复制为 config.yaml 并填写你的实际配置:
-#   cp config.template.yaml config.yaml
 
 # ── YouTube 视频发现与下载 ─────────────────────────────────
 youtube:
   api_key: "YOUR_API_KEY"  # YouTube Data API v3 key（没有也能用内置话题库）
   proxy: "socks5://127.0.0.1:7890"  # 代理，访问 YouTube 必须
+
+  # 已验证可用的日本电视台 YouTube 官方频道
+  tv_channels:
+    - handle: "@NHK"
+      name: "NHK"
+      note: "日本放送協会"
+    - handle: "@NHKWORLDJAPAN"
+      name: "NHK World-Japan"
+      note: "NHK 英文国际频道，无地区限制"
+    - handle: "@ntv"
+      name: "日本テレビ"
+      note: "日テレ"
+    - handle: "@tbsnewsdig"
+      name: "TBS NEWS DIG"
+      note: "TBS 新闻频道"
+    - handle: "@fujitv"
+      name: "フジテレビ"
+      note: "富士电视台"
+    - handle: "@tvasahi"
+      name: "テレビ朝日"
+      note: "朝日电视台"
+    - handle: "@tvtokyo"
+      name: "テレ東公式"
+      note: "东京电视台（另有 @tvtokyodrama 电视剧频道）"
+    - handle: "@MBSnews"
+      name: "MBS毎日放送"
+      note: "关西・毎日放送"
+
+  # 需要日本 IP 的平台（当前不可用，留作备用）
+  # geo_restricted_platforms:
+  #   - name: "TVer"
+  #     url: "https://tver.jp"
+  #     note: "日本最大免费电视回放平台，yt-dlp 有 extractor，需日本 IP"
+  #   - name: "AbemaTV"
+  #     url: "https://abema.tv"
+  #     note: "网络电视，yt-dlp 支持，需日本 IP"
+  #   - name: "NHK+"
+  #     url: "https://plus.nhk.jp"
+  #     note: "NHK 点播，需日本 IP"
 
   # 日语搜索关键词（小众纪录片/美食风格）
   search_queries:
@@ -33,7 +70,8 @@ youtube:
 
 # ── Whisper 语音转录 ──────────────────────────────────────
 whisper:
-  model_size: "base"       # base/small/medium/large-v3 (越大越准但越慢)
+  model_size: "medium"       # base/small/medium/large-v3 (越大越准但越慢) TODO: medium下完改回
+  beam_size: 5             # beam search 宽度（越大越准，默认1）
   device: "cpu"            # cpu / cuda（macOS 只能 cpu）
   compute_type: "int8"     # int8 / float16 / float32
 
@@ -42,7 +80,7 @@ llm:
   # Bedrock 代理模式（通过公司代理访问 AWS Bedrock Claude）
   backend: "bedrock_proxy"
   bedrock_proxy:
-    base_url: "YOUR_BEDROCK_PROXY_URL"
+    base_url: "http://deepseek-work.intsig.net/proxy/aws/claude/bedrock"
     auth_token: "YOUR_AUTH_TOKEN"
     model: "us.anthropic.claude-opus-4-6-v1"  # Bedrock 模型 ID
   # 直接 Anthropic API（备选）
@@ -54,7 +92,26 @@ llm:
 
 # ── TTS 配音 ─────────────────────────────────────────────
 tts:
-  backend: "auto"   # auto / cosyvoice2 / edge-tts
+  backend: "ttsmaker"   # auto / glm-tts / ttsmaker / cosyvoice2 / edge-tts
+
+  glm_tts:
+    api_key: "YOUR_GLM_API_KEY"
+    voice: "tongtong"     # tongtong(彤彤) / chuichui(锤锤) / xiaochen(小陈)
+    speed: 1.0            # 语速 0.5-2.0
+    volume: 1.0           # 音量 0-10
+
+  ttsmaker:
+    token: "YOUR_TTSMAKER_TOKEN"
+    voice_id: 15181       # 大鹏v2 极速版（磁性小说/故事/演讲男声，限2000字）
+    # 其他可选音色:
+    # 1508  — 中文标准男声
+    # 15032 — 阿伟v2 长文版（口语自然）
+    # 15028 — 小美v2 长文版（女声）
+    # 15181 — 大鹏v2 极速版（磁性解说风，推荐）
+    # 1518  — 大鹏v1（需排队，限100字）
+    audio_format: "mp3"
+    audio_speed: 1.0      # 语速 0.5-2.0
+    audio_volume: 0       # 音量 0=原始, -10~10
 
   cosyvoice2:
     api_url: "http://127.0.0.1:50000"  # CosyVoice2 HTTP 服务地址
@@ -79,23 +136,61 @@ video:
   fps: 30
 
   subtitle:
-    font: "PingFang SC"
-    font_size: 18               # B站风格：偏小字号，不抢画面
+    # Netflix 风格：简洁描边，不遮挡画面
+    font: "PingFang SC"         # macOS 系统字体，Semibold 粗细通过 Bold=1 控制
+    font_size: 18               # 偏小字号，不遮挡画面
     font_color: "&H00FFFFFF"    # ASS 格式：白色
-    outline_width: 2            # 黑色描边
-    shadow_depth: 1             # 阴影深度
-    margin_bottom: 30           # 底部居中
+    outline_width: 2            # 黑色描边（代替背景框）
+    shadow_depth: 0             # 无阴影，更干净
+    margin_bottom: 30           # 底部留间距
+    back_colour: "&H00000000"   # 无背景（透明）
+    border_style: 1             # 1=描边+阴影模式（非背景框）
+    bold: 1                     # 粗体，增强可读性
 
   anti_copyright:
-    crop_percent: 0.97        # 裁切掉 3%
-    brightness_adjust: 0.01   # 微调亮度
+    crop_percent: 0.97        # 裁切掉 3%（更轻微，保留更多画面）
+    brightness_adjust: 0.01   # 微调亮度（更轻微）
     mirror: false             # 是否水平翻转
 
-  # 音频模式：original=保留原声, dubbed=中文配音替换, mixed=原声+配音叠加
-  audio_mode: "original"
+  # 音频模式：original=保留原声, dubbed=中文配音替换, mixed=原声+配音叠加, subtitle_only=只加字幕(预告片)
+  audio_mode: "subtitle_only"
 
-  watermark_text: ""  # 留空不加水印
+  watermark_text: ""  # 留空不加水印，填写则加右上角水印
 
-# ── 输出设置 ─────────────────────────────────────────────
+# ── 预告片搜索 ────────────────────────────────────────
+trailer:
+  search_queries:
+    netflix_japan:
+      - "Netflix Japan 2026 予告"
+      - "Netflix 日本 2026 新作 予告編"
+      - "Netflixジャパン 2026 ドラマ 予告"
+    disney_japan:
+      - "Disney+ Japan 2026 予告"
+      - "ディズニープラス 2026 新作 予告編"
+      - "ディズニープラス 韓ドラ 2026"
+    hulu_japan:
+      - "Hulu Japan 2026 予告"
+      - "Hulu ジャパン 新作ドラマ 2026"
+    netflix_korea:
+      - "Netflix Korea 2026 예고편"
+      - "넷플릭스 2026 한국 드라마 예고"
+      - "Netflix 韓国ドラマ 2026 予告"
+
+# ── B站上传 ───────────────────────────────────────────
+bilibili:
+  cookie: "YOUR_BILI_COOKIE"
+  tid: 183                # 分区: 183=影视剪辑, 17=影视杂谈, 172=资讯
+  copyright: 2            # 2=转载
+  default_source: "YouTube"
+  upload_lines: "AUTO"    # 上传线路: AUTO / kodo / bda2 / ws / qn
+  default_tags:
+    - "预告片"
+    - "2026新番"
+    - "日剧"
+    - "韩剧"
+    - "Netflix"
+    - "中文字幕"
+
+# ── 输出设置 ─────────────────────────────────────────
 output:
   runs_dir: "runs"  # 每次运行的输出目录

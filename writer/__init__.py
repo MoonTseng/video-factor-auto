@@ -33,7 +33,7 @@ def _call_llm(config: dict, messages: list[dict], max_tokens: int = 4000) -> str
 
 
 def _call_bedrock_proxy(llm_cfg: dict, messages: list[dict], max_tokens: int) -> str:
-    """通过公司 Bedrock 代理调用 Claude（/model/{modelId}/invoke）"""
+    """通过公司 Bedrock 代理调用 Claude（/model/{modelId}/invoke），自动重试"""
     proxy_cfg = llm_cfg.get("bedrock_proxy", {})
     base_url = proxy_cfg.get("base_url", "")
     auth_token = proxy_cfg.get("auth_token", "")
@@ -49,21 +49,40 @@ def _call_bedrock_proxy(llm_cfg: dict, messages: list[dict], max_tokens: int) ->
 
     logger.info(f"   🤖 调用 Bedrock 代理: {model}")
 
-    resp = httpx.post(
-        url,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {auth_token}",
-        },
-        json=body,
-        timeout=120,
-    )
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            resp = httpx.post(
+                url,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {auth_token}",
+                },
+                json=body,
+                timeout=120,
+            )
 
-    if resp.status_code != 200:
-        raise RuntimeError(f"Bedrock 代理调用失败 ({resp.status_code}): {resp.text[:500]}")
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["content"][0]["text"].strip()
 
-    data = resp.json()
-    return data["content"][0]["text"].strip()
+            if resp.status_code in (502, 503, 429) and attempt < max_retries - 1:
+                wait = (attempt + 1) * 10
+                logger.warning(f"   ⚠️ Bedrock {resp.status_code}, {wait}s 后重试 ({attempt+1}/{max_retries})...")
+                import time
+                time.sleep(wait)
+                continue
+
+            raise RuntimeError(f"Bedrock 代理调用失败 ({resp.status_code}): {resp.text[:500]}")
+
+        except (httpx.ConnectError, httpx.ReadTimeout) as e:
+            if attempt < max_retries - 1:
+                wait = (attempt + 1) * 10
+                logger.warning(f"   ⚠️ 网络错误: {e}, {wait}s 后重试 ({attempt+1}/{max_retries})...")
+                import time
+                time.sleep(wait)
+                continue
+            raise
 
 
 # ── Whisper 转录 ──────────────────────────────────────────
@@ -83,10 +102,13 @@ def transcribe_source(config: dict, audio_path: str) -> list[dict]:
     logger.info(f"🎙️ Whisper 转录中 (model={model_size}, device={device})...")
     logger.info(f"   音频文件: {audio_path}")
 
+    beam_size = whisper_cfg.get("beam_size", 1)
+
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
     segments, info = model.transcribe(
         audio_path,
         language="ja",
+        beam_size=beam_size,       # beam search 宽度（5 比 1 准很多）
         vad_filter=True,           # 过滤静音
         vad_parameters=dict(
             min_silence_duration_ms=500,
@@ -250,6 +272,156 @@ def generate_script(config: dict, topic: dict, transcript: list[dict]) -> dict:
                 f"总字数 {sum(len(s['text']) for s in script['segments'])}")
 
     return script
+
+
+# ── 预告片字幕翻译（日语 → 中文 SRT） ────────────────────
+
+def translate_transcript_to_srt(config: dict, transcript: list[dict],
+                                 output_path: str,
+                                 batch_size: int = 20,
+                                 video_title: str = "",
+                                 video_theme: str = "") -> str:
+    """
+    将 Whisper 日语转录翻译成中文，并输出 SRT 字幕文件。
+    分批翻译以避免超出 token 限制。
+
+    参数:
+        config: 配置字典
+        transcript: [{start, end, text}, ...] — transcribe_source 的输出
+        output_path: SRT 文件输出路径
+        batch_size: 每批翻译多少条（默认 20）
+        video_title: 视频标题（帮助 LLM 理解上下文，纠正转录错误）
+        video_theme: 视频主题/类型（如 "Netflix预告片"、"日本美食"）
+    返回:
+        SRT 文件路径
+    """
+    if not transcript:
+        raise ValueError("转录为空，无法翻译")
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    logger.info(f"🈶→🈳 翻译日语字幕: {len(transcript)} 条")
+
+    # 分批翻译
+    all_translated = []
+    for i in range(0, len(transcript), batch_size):
+        batch = transcript[i:i + batch_size]
+        batch_num = i // batch_size + 1
+        total_batches = (len(transcript) + batch_size - 1) // batch_size
+        logger.info(f"   翻译批次 {batch_num}/{total_batches} ({len(batch)} 条)...")
+
+        translated = _translate_batch(config, batch,
+                                       video_title=video_title,
+                                       video_theme=video_theme)
+        all_translated.extend(translated)
+
+    # 写入 SRT 文件
+    _write_srt(all_translated, output_path)
+
+    total_chars = sum(len(t.get("zh_text", "")) for t in all_translated)
+    logger.info(f"✅ 字幕翻译完成: {output_path} ({len(all_translated)} 条, {total_chars} 中文字符)")
+
+    return output_path
+
+
+def _translate_batch(config: dict, batch: list[dict],
+                     video_title: str = "", video_theme: str = "") -> list[dict]:
+    """用 Claude 翻译一批日语字幕段"""
+    lines = []
+    for i, seg in enumerate(batch):
+        lines.append(f"{i+1}. [{seg['start']:.1f}s-{seg['end']:.1f}s] {seg['text']}")
+
+    # 构建上下文提示（帮助 LLM 理解内容、纠正转录错误）
+    context_hint = ""
+    if video_title or video_theme:
+        context_hint = "\n\n背景信息（用于理解上下文和纠正语音识别错误）:\n"
+        if video_title:
+            context_hint += f"- 视频标题: {video_title}\n"
+        if video_theme:
+            context_hint += f"- 视频类型: {video_theme}\n"
+        context_hint += "注意: 原文是语音识别(Whisper)自动生成的，可能有错字/错词。请根据上下文和视频主题智能纠正后再翻译。\n"
+
+    prompt = f"""请将以下日语字幕翻译成中文。这是一段影视预告片的字幕。
+{context_hint}
+要求：
+1. 翻译要自然流畅，符合中文观众的观看习惯
+2. 保持原句的语气和情感（紧张、悬疑、热血等）
+3. 人名保留日文/韩文原名，后面括号加中文注音（仅首次出现时）
+4. 如果原文是旁白/画外音，翻译时保持旁白语气
+5. 短句保持简短，不要过度意译
+6. 如果发现明显的语音识别错误（如乱码、不通顺的词），请根据上下文推断正确含义后翻译
+
+原文:
+{chr(10).join(lines)}
+
+输出格式（严格 JSON 数组）：
+[
+  {{"id": 1, "zh": "中文翻译"}},
+  {{"id": 2, "zh": "中文翻译"}},
+  ...
+]
+
+只输出 JSON 数组，不要其他内容。"""
+
+    raw = _call_llm(config, [{"role": "user", "content": prompt}], max_tokens=4000)
+
+    # 解析翻译结果
+    translations = _parse_json_response(raw)
+    if translations is None:
+        # 尝试解析为数组
+        try:
+            translations = json.loads(raw)
+        except json.JSONDecodeError:
+            start = raw.find('[')
+            end = raw.rfind(']')
+            if start >= 0 and end > start:
+                try:
+                    translations = json.loads(raw[start:end+1])
+                except json.JSONDecodeError:
+                    pass
+
+    # 合并翻译结果
+    if isinstance(translations, list):
+        zh_map = {}
+        for item in translations:
+            if isinstance(item, dict):
+                idx = item.get("id", 0)
+                zh_map[idx] = item.get("zh", "")
+
+        result = []
+        for i, seg in enumerate(batch):
+            zh_text = zh_map.get(i + 1, seg["text"])  # fallback 用原文
+            result.append({
+                "start": seg["start"],
+                "end": seg["end"],
+                "ja_text": seg["text"],
+                "zh_text": zh_text,
+            })
+        return result
+    else:
+        # 翻译失败，返回原文
+        logger.warning("⚠️ 翻译解析失败，使用日语原文")
+        return [{"start": s["start"], "end": s["end"],
+                 "ja_text": s["text"], "zh_text": s["text"]} for s in batch]
+
+
+def _write_srt(segments: list[dict], output_path: str):
+    """写入 SRT 字幕文件"""
+    with open(output_path, "w", encoding="utf-8") as f:
+        for i, seg in enumerate(segments, 1):
+            start = _srt_timestamp(seg["start"])
+            end = _srt_timestamp(seg["end"])
+            text = seg.get("zh_text", seg.get("ja_text", ""))
+            f.write(f"{i}\n{start} --> {end}\n{text}\n\n")
+
+
+def _srt_timestamp(seconds: float) -> str:
+    """秒数转 SRT 时间格式 HH:MM:SS,mmm"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
 # ── 保存脚本到文件 ────────────────────────────────────────

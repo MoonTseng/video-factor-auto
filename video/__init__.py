@@ -39,6 +39,11 @@ def compose_video(config: dict, source_video_path: str,
 
     logger.info(f"🎬 合成视频: {src_w}x{src_h}, {src_duration:.0f}s, 音频模式: {audio_mode}")
 
+    # ── subtitle_only 模式：预告片专用，只加字幕，不做任何画面处理 ──
+    if audio_mode == "subtitle_only":
+        return _compose_subtitle_only(
+            source_video_path, output_path, srt_path, sub_cfg, video_cfg)
+
     # ── 构建 FFmpeg 滤镜链 ──
     filters = []
 
@@ -78,21 +83,26 @@ def compose_video(config: dict, source_video_path: str,
 
         font_name = sub_cfg.get("font", "PingFang SC")
         font_size = sub_cfg.get("font_size", 18)
-        font_color = sub_cfg.get("font_color", "&H00FFFFFF")  # ASS 格式白色
+        font_color = sub_cfg.get("font_color", "&H00FFFFFF")
         outline_width = sub_cfg.get("outline_width", 2)
-        shadow_depth = sub_cfg.get("shadow_depth", 1)
+        shadow_depth = sub_cfg.get("shadow_depth", 0)
         margin_bottom = sub_cfg.get("margin_bottom", 30)
+        border_style = sub_cfg.get("border_style", 1)
+        bold = sub_cfg.get("bold", 1)
+        back_colour = sub_cfg.get("back_colour", "&H00000000")
 
-        # 使用 subtitles 过滤器烧录硬字幕
+        # Netflix 风格：描边白字，不遮挡画面
         subtitle_filter = (
             f"subtitles='{srt_escaped}'"
             f":force_style='FontName={font_name},"
             f"FontSize={font_size},"
             f"PrimaryColour={font_color},"
             f"OutlineColour=&H00000000,"
-            f"BorderStyle=1,"
+            f"BackColour={back_colour},"
+            f"BorderStyle={border_style},"
             f"Outline={outline_width},"
             f"Shadow={shadow_depth},"
+            f"Bold={bold},"
             f"MarginV={margin_bottom},"
             f"Alignment=2'"  # 底部居中
         )
@@ -256,6 +266,84 @@ def add_watermark(config: dict, video_path: str, output_path: str = None) -> str
 
 
 # ══════════════════════════════════════════════════════════
+#  subtitle_only 模式（预告片专用）
+# ══════════════════════════════════════════════════════════
+
+def _compose_subtitle_only(source_video_path: str, output_path: str,
+                           srt_path: str, sub_cfg: dict,
+                           video_cfg: dict) -> str:
+    """
+    预告片专用：保留原声 + 保持原始画质 + 只烧中文字幕。
+    不做任何防版权处理（不裁切、不调亮度、不镜像）。
+    使用 CRF 18 保持高画质。
+    """
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    if srt_path and os.path.exists(srt_path):
+        # 字幕滤镜 — B站风格
+        srt_escaped = srt_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+        font_name = sub_cfg.get("font", "PingFang SC")
+        font_size = sub_cfg.get("font_size", 18)
+        font_color = sub_cfg.get("font_color", "&H00FFFFFF")
+        outline_width = sub_cfg.get("outline_width", 2)
+        shadow_depth = sub_cfg.get("shadow_depth", 0)
+        margin_bottom = sub_cfg.get("margin_bottom", 30)
+        border_style = sub_cfg.get("border_style", 1)
+        bold = sub_cfg.get("bold", 1)
+        back_colour = sub_cfg.get("back_colour", "&H00000000")
+
+        # Netflix 风格字幕：描边白字，不遮挡画面
+        subtitle_filter = (
+            f"subtitles='{srt_escaped}'"
+            f":force_style='FontName={font_name},"
+            f"FontSize={font_size},"
+            f"PrimaryColour={font_color},"
+            f"OutlineColour=&H00000000,"
+            f"BackColour={back_colour},"
+            f"BorderStyle={border_style},"
+            f"Outline={outline_width},"
+            f"Shadow={shadow_depth},"
+            f"Bold={bold},"
+            f"MarginV={margin_bottom},"
+            f"Alignment=2'"
+        )
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", source_video_path,
+            "-vf", subtitle_filter,
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "18",           # 高画质
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            output_path,
+        ]
+    else:
+        # 无字幕 — 直接 copy（零损耗）
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", source_video_path,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            output_path,
+        ]
+
+    logger.info("🔧 FFmpeg 合成中（subtitle_only 模式）...")
+    _run_ffmpeg(cmd)
+
+    out_info = _get_video_info(output_path)
+    logger.info(f"✅ 预告片合成完成: {output_path}")
+    logger.info(f"   分辨率: {out_info.get('width')}x{out_info.get('height')}, "
+                f"时长: {out_info.get('duration', 0):.0f}s, "
+                f"大小: {os.path.getsize(output_path) / 1024 / 1024:.1f}MB")
+
+    return output_path
+
+
+# ══════════════════════════════════════════════════════════
 #  辅助函数
 # ══════════════════════════════════════════════════════════
 
@@ -297,7 +385,7 @@ def _parse_fps(fps_str: str) -> float:
         return 30.0
 
 
-def _run_ffmpeg(cmd: list[str], timeout: int = 600):
+def _run_ffmpeg(cmd: list[str], timeout: int = 1800):
     """执行 FFmpeg 命令"""
     logger.debug(f"FFmpeg: {' '.join(cmd[:6])}...")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
