@@ -87,6 +87,7 @@ class FoodTheme(BaseTheme):
         """用 LLM 生成内容简介 + hashtag"""
         title = video_info.get("title", "")
         food = self._detect_food(title) or "美食"
+        transcript_preview = video_info.get("transcript_preview", "")
 
         try:
             from writer import _call_llm
@@ -95,12 +96,16 @@ class FoodTheme(BaseTheme):
             with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
 
+            transcript_hint = ""
+            if transcript_preview:
+                transcript_hint = f"\n视频旁白/解说（供参考，不要照抄）:\n{transcript_preview[:500]}\n"
+
             prompt = f"""为一个 B站美食视频写简介。这是一个日本{food}的制作/探店视频。
 
 原始标题: {title}
-
+{transcript_hint}
 要求:
-1. 用中文简要介绍视频内容（这道美食的特色、匠人精神、制作亮点等，2-3句话）
+1. 用中文简要介绍视频内容（这道美食的特色、匠人精神、制作亮点等，2-3句话），要有具体内容
 2. 不要出现"搬运自"、"来自"、"转载"、"源自"、"原视频"等字样
 3. 不要出现任何URL链接
 4. 语气自然，像一个美食博主在安利

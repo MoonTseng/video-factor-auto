@@ -119,12 +119,16 @@ class NetflixTheme(BaseTheme):
             with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
 
+            transcript_hint = ""
+            if transcript_preview:
+                transcript_hint = f"\n视频台词/旁白（供参考，不要照抄）:\n{transcript_preview[:500]}\n"
+
             prompt = f"""为一个 B站视频写简介。这是一部{platform_cn}平台的日剧/电影预告片，作品名《{work_name}》。
 
 原始标题: {original}
-
+{transcript_hint}
 要求:
-1. 用中文简要介绍这部作品的类型、看点、剧情概要(2-3句话即可)
+1. 用中文简要介绍这部作品的类型、看点、剧情概要(2-3句话)，要有具体内容而非空话套话
 2. 不要出现"搬运自"、"来自"、"转载"、"源自"、"原视频"等字样
 3. 不要出现任何URL链接
 4. 语气自然，像一个追剧博主在安利作品
