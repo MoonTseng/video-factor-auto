@@ -22,6 +22,8 @@ def _call_llm(config: dict, messages: list[dict], max_tokens: int = 4000) -> str
 
     if backend == "bedrock_proxy":
         return _call_bedrock_proxy(llm_cfg, messages, max_tokens)
+    elif backend == "openai":
+        return _call_openai(llm_cfg, messages, max_tokens)
     else:
         # 直接 Anthropic API 兜底
         import anthropic
@@ -83,6 +85,27 @@ def _call_bedrock_proxy(llm_cfg: dict, messages: list[dict], max_tokens: int) ->
                 time.sleep(wait)
                 continue
             raise
+
+
+def _call_openai(llm_cfg: dict, messages: list[dict], max_tokens: int) -> str:
+    """通过 OpenAI 兼容接口调用 LLM（支持小米 MiMo 等）"""
+    import os
+    from openai import OpenAI
+
+    oa_cfg = llm_cfg.get("openai", {})
+    api_key = oa_cfg.get("api_key") or os.getenv("XIAOMI_API_KEY", "")
+    base_url = oa_cfg.get("base_url") or os.getenv("XIAOMI_BASE_URL", "")
+    model = oa_cfg.get("model", "mimo-v2-pro")
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    # 转换消息格式：Anthropic 用 system 角色，OpenAI 也支持
+    resp = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        max_tokens=max_tokens,
+    )
+    return resp.choices[0].message.content.strip()
 
 
 # ── Whisper 转录 ──────────────────────────────────────────
@@ -172,8 +195,8 @@ def _ai_select_topic(config: dict, candidates: list[dict]) -> dict:
 候选视频：
 {candidate_text}
 
-只回复数字编号（如: 3）"""
-    }], max_tokens=200)
+只回复数字编号（如: 3）\"\"\"
+    }], max_tokens=2000)
 
     try:
         choice = int(re.search(r'\d+', raw).group()) - 1

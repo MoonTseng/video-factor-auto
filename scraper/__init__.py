@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 def _get_ytdlp_bin() -> str:
     """获取 yt-dlp 可执行文件路径（优先 .venv 内的）"""
+    # 确保 deno 在 PATH 中（yt-dlp n-challenge 求解需要）
+    deno_bin = os.path.join(os.path.expanduser("~"), ".deno", "bin")
+    if os.path.isdir(deno_bin) and deno_bin not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = deno_bin + os.pathsep + os.environ.get("PATH", "")
     # 优先用项目 .venv 里的 yt-dlp
     venv_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv", "bin", "yt-dlp")
     if os.path.isfile(venv_bin):
@@ -204,10 +208,17 @@ def download_trailer(config: dict, trailer_info: dict, output_dir: str) -> dict:
         "-o", video_path,
         "--no-playlist",
         "--no-warnings",
+        "--remote-components", "ejs:github",
     ]
     
     if proxy:
         cmd.extend(["--proxy", proxy])
+    
+    # 添加cookies文件
+    cookies_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "www.youtube.com_cookies.txt")
+    if os.path.isfile(cookies_file):
+        cmd.extend(["--cookies", cookies_file])
+        logger.info(f"🍪 使用cookies文件: {cookies_file}")
     
     cmd.append(video_url)
     
@@ -259,6 +270,11 @@ def _ytdlp_search(query: str, proxy: str = "", max_results: int = 10) -> list[di
     ]
     if proxy:
         cmd.extend(["--proxy", proxy])
+    
+    # 添加cookies文件
+    cookies_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "www.youtube.com_cookies.txt")
+    if os.path.isfile(cookies_file):
+        cmd.extend(["--cookies", cookies_file])
     
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
@@ -341,10 +357,17 @@ def download_video(config: dict, topic: dict, output_dir: str) -> dict:
         "-o", video_path,
         "--no-playlist",
         "--no-warnings",
+        "--remote-components", "ejs:github",
     ]
 
     if proxy:
         cmd.extend(["--proxy", proxy])
+
+    # 添加cookies文件
+    cookies_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "www.youtube.com_cookies.txt")
+    if os.path.isfile(cookies_file):
+        cmd.extend(["--cookies", cookies_file])
+        logger.info(f"🍪 使用cookies文件: {cookies_file}")
 
     cmd.append(video_url)
 

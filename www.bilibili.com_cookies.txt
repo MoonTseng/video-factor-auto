@@ -1,0 +1,16 @@
+# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file! Do not edit.
+
+.bilibili.com	TRUE	/	FALSE	1807722199	buvid3	4F2758C4-B703-E790-CBA4-38761AE6DB6E03151infoc
+.bilibili.com	TRUE	/	FALSE	1807722199	b_nut	1776186203
+.bilibili.com	TRUE	/	FALSE	1807722199	_uuid	2710492BD-33E3-14C5-1084D-DD12D91019DC799033infoc
+.bilibili.com	TRUE	/	FALSE	1807722199	home_feed_column	5
+.bilibili.com	TRUE	/	FALSE	1807722199	browser_resolution	1710-947
+www.bilibili.com	FALSE	/	FALSE	0	bmg_af_switch	1
+www.bilibili.com	FALSE	/	FALSE	0	bmg_src_def_domain	i0.hdslb.com
+.bilibili.com	TRUE	/	FALSE	1810746200	buvid4	A32BE9C8-29B9-E17F-395E-7135E81D407803485-026041501-RohNJr8PMxSD1KyWnZRuBA%3D%3D
+.bilibili.com	TRUE	/	FALSE	1810746199	buvid_fp	ad89c7fc12ce647cc3452cc7bd02da61
+.bilibili.com	TRUE	/	FALSE	1776445399	bili_ticket	eyJhbGciOiJIUzI1NiIsImtpZCI6InMwMyIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzY0NDU0MDMsImlhdCI6MTc3NjE4NjE0MywicGx0IjotMX0.2AgZto_BoM6KUTRRtX1QxZZpv8-txe_ittvNFo98wiA
+.bilibili.com	TRUE	/	FALSE	1776445399	bili_ticket_expires	1776445343
+.bilibili.com	TRUE	/	FALSE	0	b_lsid	9306B7B0_19D8CF29026

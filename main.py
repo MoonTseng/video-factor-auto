@@ -27,6 +27,7 @@ import os
 import re
 import sys
 from datetime import datetime
+from typing import Union, Optional
 
 import yaml
 
@@ -458,7 +459,7 @@ def _search_and_pick(config: dict, theme, keyword: str = "") -> tuple:
     return url, best
 
 
-def _llm_pick_video(config: dict, candidates: list[dict], theme) -> dict | None:
+def _llm_pick_video(config: dict, candidates: list[dict], theme) -> Optional[dict]:
     """
     用 LLM 从候选视频中选出最适合做二创的那个。
     优先选：单部作品预告片 > 合集/总集编 > 新闻/花絮
@@ -516,7 +517,7 @@ def _llm_pick_video(config: dict, candidates: list[dict], theme) -> dict | None:
         response = _call_llm(
             config,
             [{"role": "user", "content": prompt}],
-            max_tokens=200,
+            max_tokens=2000,
         )
 
         # 解析 LLM 响应
@@ -569,7 +570,7 @@ def _build_publish_info(theme, video_info: dict, video_path: str, cover_path: st
     }
 
 
-def _upload_bilibili(config: dict, publish_info: dict) -> str | None:
+def _upload_bilibili(config: dict, publish_info: dict) -> Optional[str]:
     """上传到 B站，返回 BV号"""
     try:
         from uploader import upload_to_bilibili

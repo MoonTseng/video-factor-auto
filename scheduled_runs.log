@@ -1,0 +1,252 @@
+2026-04-15 00:47:10,503 | INFO | ============================================================
+2026-04-15 00:47:10,504 | INFO | 定时搬运任务开始
+2026-04-15 00:47:10,504 | INFO | 当前时间: 2026-04-15 00:47:10
+2026-04-15 00:47:10,508 | INFO | 选择主题: netflix (索引: 0)
+2026-04-15 00:47:10,508 | INFO | 使用计数器选择主题，当前计数: 0
+2026-04-15 00:47:10,508 | INFO | DRY RUN: 将运行主题 netflix
+2026-04-15 00:49:13,631 | INFO | ============================================================
+2026-04-15 00:49:13,631 | INFO | 定时搬运任务开始
+2026-04-15 00:49:13,631 | INFO | 当前时间: 2026-04-15 00:49:13
+2026-04-15 00:49:13,637 | INFO | 选择主题: travel (索引: 1)
+2026-04-15 00:49:13,637 | INFO | 使用计数器选择主题，当前计数: 1
+2026-04-15 00:49:13,637 | INFO | DRY RUN: 将运行主题 travel
+2026-04-15 00:49:48,352 | INFO | ============================================================
+2026-04-15 00:49:48,352 | INFO | 定时搬运任务开始
+2026-04-15 00:49:48,352 | INFO | 当前时间: 2026-04-15 00:49:48
+2026-04-15 00:49:48,355 | INFO | 选择主题: food (索引: 2)
+2026-04-15 00:49:48,356 | INFO | 使用计数器选择主题，当前计数: 2
+2026-04-15 00:49:48,356 | INFO | DRY RUN: 将运行主题 food
+2026-04-15 00:53:45,694 | INFO | ============================================================
+2026-04-15 00:53:45,695 | INFO | 定时搬运任务开始
+2026-04-15 00:53:45,695 | INFO | 当前时间: 2026-04-15 00:53:45
+2026-04-15 00:53:45,701 | INFO | 使用指定主题: netflix
+2026-04-15 00:53:45,701 | INFO | DRY RUN: 将运行主题 netflix
+2026-04-15 00:54:02,432 | INFO | ============================================================
+2026-04-15 00:54:02,433 | INFO | 定时搬运任务开始
+2026-04-15 00:54:02,433 | INFO | 当前时间: 2026-04-15 00:54:02
+2026-04-15 00:54:02,620 | INFO | 使用指定主题: netflix
+2026-04-15 00:54:02,620 | INFO | 开始运行主题: netflix
+2026-04-15 00:54:02,620 | INFO | 已设置代理环境变量
+2026-04-15 00:54:02,630 | ERROR | 运行主题 netflix 时发生错误: No module named 'yaml'
+2026-04-15 00:54:02,631 | INFO | 通知: ❌ 视频搬运失败 - NETFLIX
+主题: NETFLIX
+错误: No module named 'yaml'
+时间: 2026-04-15 00:54:02
+状态: 失败
+2026-04-15 00:54:02,631 | ERROR | 发送微信通知时出错: No module named 'yaml'
+2026-04-15 00:54:02,631 | ERROR | 定时搬运任务失败
+2026-04-15 00:54:17,853 | INFO | ============================================================
+2026-04-15 00:54:17,853 | INFO | 定时搬运任务开始
+2026-04-15 00:54:17,853 | INFO | 当前时间: 2026-04-15 00:54:17
+2026-04-15 00:54:17,857 | INFO | 使用指定主题: netflix
+2026-04-15 00:54:17,857 | INFO | 开始运行主题: netflix
+2026-04-15 00:54:17,857 | INFO | 已设置代理环境变量
+2026-04-15 00:54:18,017 | INFO | 📁 运行目录: runs/netflix_20260415_005418
+2026-04-15 00:54:18,017 | INFO | 🎨 主题: netflix | 分区: 183 | 音频: subtitle_only
+2026-04-15 00:54:18,017 | INFO | 🔍 Step 1: 使用主题默认搜索...
+2026-04-15 00:54:18,023 | ERROR | 运行主题 netflix 时发生错误: No module named 'httpx'
+2026-04-15 00:54:18,024 | INFO | 通知: ❌ 视频搬运失败 - NETFLIX
+主题: NETFLIX
+错误: No module named 'httpx'
+时间: 2026-04-15 00:54:18
+状态: 失败
+2026-04-15 00:54:18,030 | INFO | 微信通知未启用
+2026-04-15 00:54:18,030 | ERROR | 定时搬运任务失败
+2026-04-15 00:54:46,832 | INFO | ============================================================
+2026-04-15 00:54:46,832 | INFO | 定时搬运任务开始
+2026-04-15 00:54:46,832 | INFO | 当前时间: 2026-04-15 00:54:46
+2026-04-15 00:54:46,838 | INFO | 使用指定主题: netflix
+2026-04-15 00:54:46,838 | INFO | 开始运行主题: netflix
+2026-04-15 00:54:46,838 | INFO | 已设置代理环境变量
+2026-04-15 00:54:46,858 | INFO | 📁 运行目录: runs/netflix_20260415_005446
+2026-04-15 00:54:46,858 | INFO | 🎨 主题: netflix | 分区: 183 | 音频: subtitle_only
+2026-04-15 00:54:46,858 | INFO | 🔍 Step 1: 使用主题默认搜索...
+2026-04-15 00:54:46,904 | INFO |    搜索词: ['Netflix Japan 2026 予告', 'Netflix 日本 2026 新作 予告編', 'Netflix Japan 2026 trailer']...
+2026-04-15 00:55:02,384 | INFO | ============================================================
+2026-04-15 00:55:02,384 | INFO | 定时搬运任务开始
+2026-04-15 00:55:02,384 | INFO | 当前时间: 2026-04-15 00:55:02
+2026-04-15 00:55:02,387 | INFO | 使用指定主题: netflix
+2026-04-15 00:55:02,387 | INFO | 开始运行主题: netflix
+2026-04-15 00:55:02,387 | INFO | 已设置代理环境变量
+2026-04-15 00:55:02,400 | INFO | 📁 运行目录: runs/netflix_20260415_005502
+2026-04-15 00:55:02,401 | INFO | 🎨 主题: netflix | 分区: 183 | 音频: subtitle_only
+2026-04-15 00:55:02,401 | INFO | 🔍 Step 1: 使用主题默认搜索...
+2026-04-15 00:55:02,442 | INFO |    搜索词: ['Netflix Japan 2026 予告', 'Netflix 日本 2026 新作 予告編', 'Netflix Japan 2026 trailer']...
+2026-04-15 00:55:10,268 | INFO |    共 16 个候选视频，LLM 筛选中...
+2026-04-15 00:55:10,273 | INFO |    🤖 调用 Bedrock 代理: us.anthropic.claude-opus-4-6-v1
+2026-04-15 00:55:10,312 | WARNING |    ⚠️ LLM 选片调用失败: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`.
+2026-04-15 00:55:10,312 | WARNING |    ⚠️ LLM 筛选失败，fallback 选播放量最高
+2026-04-15 00:55:10,312 | INFO | 📌 视频: 『戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC』ティーザー予告編｜Netflix Japan
+2026-04-15 00:55:10,312 | INFO | 📥 Step 2: 下载视频...
+2026-04-15 00:55:10,313 | INFO | 📥 下载视频: 『戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC』ティーザー予告編｜Netflix Japan
+2026-04-15 00:55:11,961 | ERROR | yt-dlp 下载失败: ERROR: [youtube] TVXDQEPVQ8Q: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+2026-04-15 00:55:11,962 | ERROR | 运行主题 netflix 时发生错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+2026-04-15 00:55:11,964 | INFO | 通知: ❌ 视频搬运失败 - NETFLIX
+主题: NETFLIX
+错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+时间: 2026-04-15 00:55:11
+状态: 失败
+2026-04-15 00:55:11,969 | INFO | 微信通知未启用
+2026-04-15 00:55:11,969 | ERROR | 定时搬运任务失败
+2026-04-15 01:02:46,990 | INFO | ============================================================
+2026-04-15 01:02:46,991 | INFO | 定时搬运任务开始
+2026-04-15 01:02:46,991 | INFO | 当前时间: 2026-04-15 01:02:46
+2026-04-15 01:02:46,993 | INFO | 使用指定主题: netflix
+2026-04-15 01:02:46,993 | INFO | DRY RUN: 将运行主题 netflix
+[2026-04-15 10:00:26] 开始执行定时搬运日本视频任务
+[2026-04-15 10:00:26] 执行命令脚本
+2026-04-15 10:00:26,820 | INFO | ============================================================
+2026-04-15 10:00:26,820 | INFO | 定时搬运任务开始
+2026-04-15 10:00:26,820 | INFO | 当前时间: 2026-04-15 10:00:26
+2026-04-15 10:00:26,823 | INFO | 选择主题: netflix (索引: 3)
+2026-04-15 10:00:26,823 | INFO | 使用计数器选择主题，当前计数: 3
+2026-04-15 10:00:26,823 | INFO | 开始运行主题: netflix
+2026-04-15 10:00:26,823 | INFO | 已设置代理环境变量
+2026-04-15 10:00:26,825 | ERROR | 运行主题 netflix 时发生错误: No module named 'yaml'
+2026-04-15 10:00:26,826 | INFO | 通知: ❌ 视频搬运失败 - NETFLIX
+主题: NETFLIX
+错误: No module named 'yaml'
+时间: 2026-04-15 10:00:26
+状态: 失败
+2026-04-15 10:00:26,826 | ERROR | 发送微信通知时出错: No module named 'yaml'
+2026-04-15 10:00:26,826 | ERROR | 定时搬运任务失败
+[2026-04-15 10:00:26] 标准输出:
+
+==================================================
+通知: ❌ 视频搬运失败 - NETFLIX
+==================================================
+主题: NETFLIX
+错误: No module named 'yaml'
+时间: 2026-04-15 10:00:26
+状态: 失败
+==================================================
+
+
+[2026-04-15 10:00:26] 错误输出:
+2026-04-15 10:00:26,820 | INFO | ============================================================
+2026-04-15 10:00:26,820 | INFO | 定时搬运任务开始
+2026-04-15 10:00:26,820 | INFO | 当前时间: 2026-04-15 10:00:26
+2026-04-15 10:00:26,823 | INFO | 选择主题: netflix (索引: 3)
+2026-04-15 10:00:26,823 | INFO | 使用计数器选择主题，当前计数: 3
+2026-04-15 10:00:26,823 | INFO | 开始运行主题: netflix
+2026-04-15 10:00:26,823 | INFO | 已设置代理环境变量
+2026-04-15 10:00:26,825 | ERROR | 运行主题 netflix 时发生错误: No module named 'yaml'
+Traceback (most recent call last):
+  File "/Users/raytseng/hermes/video-factor-auto/scheduled_runner.py", line 181, in run_pipeline_with_theme
+    from main import run_pipeline, load_config
+  File "/Users/raytseng/hermes/video-factor-auto/main.py", line 32, in <module>
+    import yaml
+ModuleNotFoundError: No module named 'yaml'
+2026-04-15 10:00:26,826 | INFO | 通知: ❌ 视频搬运失败 - NETFLIX
+主题: NETFLIX
+错误: No module named 'yaml'
+时间: 2026-04-15 10:00:26
+状态: 失败
+2026-04-15 10:00:26,826 | ERROR | 发送微信通知时出错: No module named 'yaml'
+2026-04-15 10:00:26,826 | ERROR | 定时搬运任务失败
+
+[2026-04-15 10:00:26] 脚本执行失败，返回码: 1
+[2026-04-15 10:00:26] 需要发送错误通知
+[2026-04-15 10:00:26] 定时任务执行完成
+[2026-04-15 10:06:11] 重新执行定时搬运日本视频任务（依赖已安装）
+[2026-04-15 10:06:11] 执行命令脚本
+2026-04-15 10:06:12,027 | INFO | ============================================================
+2026-04-15 10:06:12,027 | INFO | 定时搬运任务开始
+2026-04-15 10:06:12,027 | INFO | 当前时间: 2026-04-15 10:06:12
+2026-04-15 10:06:12,033 | INFO | 选择主题: netflix (索引: 0)
+2026-04-15 10:06:12,033 | INFO | 使用计数器选择主题，当前计数: 4
+2026-04-15 10:06:12,033 | INFO | 开始运行主题: netflix
+2026-04-15 10:06:12,033 | INFO | 已设置代理环境变量
+2026-04-15 10:06:12,056 | INFO | 📁 运行目录: runs/netflix_20260415_100612
+2026-04-15 10:06:12,056 | INFO | 🎨 主题: netflix | 分区: 183 | 音频: subtitle_only
+2026-04-15 10:06:12,056 | INFO | 🔍 Step 1: 使用主题默认搜索...
+2026-04-15 10:06:12,109 | INFO |    搜索词: ['Netflix Japan 2026 予告', 'Netflix 日本 2026 新作 予告編', 'Netflix Japan 2026 trailer']...
+2026-04-15 10:06:20,301 | INFO |    共 15 个候选视频，LLM 筛选中...
+2026-04-15 10:06:20,302 | INFO |    🤖 调用 Bedrock 代理: us.anthropic.claude-opus-4-6-v1
+2026-04-15 10:06:20,342 | WARNING |    ⚠️ LLM 选片调用失败: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`.
+2026-04-15 10:06:20,342 | WARNING |    ⚠️ LLM 筛选失败，fallback 选播放量最高
+2026-04-15 10:06:20,342 | INFO | 📌 视频: 『戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC』ティーザー予告編｜Netflix Japan
+2026-04-15 10:06:20,342 | INFO | 📥 Step 2: 下载视频...
+2026-04-15 10:06:20,342 | INFO | 📥 下载视频: 『戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC』ティーザー予告編｜Netflix Japan
+2026-04-15 10:06:20,342 | INFO | 🍪 使用cookies文件: /Users/raytseng/hermes/video-factor-auto/www.youtube.com_cookies.txt
+2026-04-15 10:06:21,924 | ERROR | yt-dlp 下载失败: ERROR: [youtube] TVXDQEPVQ8Q: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+2026-04-15 10:06:21,925 | ERROR | 运行主题 netflix 时发生错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+2026-04-15 10:06:21,927 | INFO | 通知: ❌ 视频搬运失败 - NETFLIX
+主题: NETFLIX
+错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+时间: 2026-04-15 10:06:21
+状态: 失败
+2026-04-15 10:06:21,931 | INFO | 微信通知未启用
+2026-04-15 10:06:21,931 | ERROR | 定时搬运任务失败
+[2026-04-15 10:06:21] 标准输出:
+
+╔═══════════════════════════════════════════════════════╗
+║   🎬 多渠道内容管线 — NETFLIX                           ║
+╚═══════════════════════════════════════════════════════╝
+   📡 发布平台: B站
+
+
+==================================================
+通知: ❌ 视频搬运失败 - NETFLIX
+==================================================
+主题: NETFLIX
+错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+时间: 2026-04-15 10:06:21
+状态: 失败
+==================================================
+
+
+[2026-04-15 10:06:21] 错误输出:
+2026-04-15 10:06:12,027 | INFO | ============================================================
+2026-04-15 10:06:12,027 | INFO | 定时搬运任务开始
+2026-04-15 10:06:12,027 | INFO | 当前时间: 2026-04-15 10:06:12
+2026-04-15 10:06:12,033 | INFO | 选择主题: netflix (索引: 0)
+2026-04-15 10:06:12,033 | INFO | 使用计数器选择主题，当前计数: 4
+2026-04-15 10:06:12,033 | INFO | 开始运行主题: netflix
+2026-04-15 10:06:12,033 | INFO | 已设置代理环境变量
+2026-04-15 10:06:12,056 | INFO | 📁 运行目录: runs/netflix_20260415_100612
+2026-04-15 10:06:12,056 | INFO | 🎨 主题: netflix | 分区: 183 | 音频: subtitle_only
+2026-04-15 10:06:12,056 | INFO | 🔍 Step 1: 使用主题默认搜索...
+2026-04-15 10:06:12,109 | INFO |    搜索词: ['Netflix Japan 2026 予告', 'Netflix 日本 2026 新作 予告編', 'Netflix Japan 2026 trailer']...
+2026-04-15 10:06:20,301 | INFO |    共 15 个候选视频，LLM 筛选中...
+2026-04-15 10:06:20,302 | INFO |    🤖 调用 Bedrock 代理: us.anthropic.claude-opus-4-6-v1
+2026-04-15 10:06:20,342 | WARNING |    ⚠️ LLM 选片调用失败: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`.
+2026-04-15 10:06:20,342 | WARNING |    ⚠️ LLM 筛选失败，fallback 选播放量最高
+2026-04-15 10:06:20,342 | INFO | 📌 视频: 『戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC』ティーザー予告編｜Netflix Japan
+2026-04-15 10:06:20,342 | INFO | 📥 Step 2: 下载视频...
+2026-04-15 10:06:20,342 | INFO | 📥 下载视频: 『戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC』ティーザー予告編｜Netflix Japan
+2026-04-15 10:06:20,342 | INFO | 🍪 使用cookies文件: /Users/raytseng/hermes/video-factor-auto/www.youtube.com_cookies.txt
+2026-04-15 10:06:21,924 | ERROR | yt-dlp 下载失败: ERROR: [youtube] TVXDQEPVQ8Q: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+2026-04-15 10:06:21,925 | ERROR | 运行主题 netflix 时发生错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+Traceback (most recent call last):
+  File "/Users/raytseng/hermes/video-factor-auto/scheduled_runner.py", line 190, in run_pipeline_with_theme
+    result = run_pipeline(config, theme, platforms=['bilibili'])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/raytseng/hermes/video-factor-auto/main.py", line 185, in run_pipeline
+    source = download_video(config, topic, source_dir)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/raytseng/hermes/video-factor-auto/scraper/__init__.py", line 377, in download_video
+    raise RuntimeError(f"yt-dlp 下载失败: {result.stderr[-200:]}")
+RuntimeError: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+2026-04-15 10:06:21,927 | INFO | 通知: ❌ 视频搬运失败 - NETFLIX
+主题: NETFLIX
+错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+时间: 2026-04-15 10:06:21
+状态: 失败
+2026-04-15 10:06:21,931 | INFO | 微信通知未启用
+2026-04-15 10:06:21,931 | ERROR | 定时搬运任务失败
+
+[2026-04-15 10:06:21] 脚本执行失败，返回码: 1
+[2026-04-15 10:06:21] 需要发送错误通知
+[2026-04-15 10:06:21] 定时任务执行完成
