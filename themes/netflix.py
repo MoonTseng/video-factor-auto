@@ -123,17 +123,18 @@ class NetflixTheme(BaseTheme):
             if transcript_preview:
                 transcript_hint = f"\n视频台词/旁白（供参考，不要照抄）:\n{transcript_preview[:500]}\n"
 
-            prompt = f"""为一个 B站视频写简介。这是一部{platform_cn}平台的日剧/电影预告片，作品名《{work_name}》。
+            prompt = f"""为一个 B站视频写简介。这是{platform_cn}平台的影视预告片，作品名《{work_name}》。
 
 原始标题: {original}
 {transcript_hint}
 要求:
 1. 用中文简要介绍这部作品的类型、看点、剧情概要(2-3句话)，要有具体内容而非空话套话
-2. 不要出现"搬运自"、"来自"、"转载"、"源自"、"原视频"等字样
+2. 不要出现"搬运自"、"来自"、"转载"、"源自"、"原视频"、"二创"、"品牌化"、"中文字幕版"等字样
 3. 不要出现任何URL链接
-4. 语气自然，像一个追剧博主在安利作品
-5. 最后加上一行 hashtag 标签（用 # 开头），包含: #{platform_cn} #预告片 #日剧 以及2-3个跟作品内容相关的吸引人的标签
-6. 整体不超过200字
+4. 不要解释字幕翻译、方便观看之类的说明性文字
+5. 语气自然，像一个追剧博主在安利作品
+6. 最后加上一行 hashtag 标签（用 # 开头），包含: #{platform_cn} #预告片 以及3-4个跟作品内容相关的标签（根据内容判断是日剧/韩剧/电影等）
+7. 整体不超过200字
 
 直接输出简介文本，不要加任何前缀。"""
 
@@ -143,25 +144,24 @@ class NetflixTheme(BaseTheme):
                 max_tokens=400,
             ).strip()
 
-            # 确保没有被 LLM 加上 "搬运" 等关键词
-            for bad_word in ["搬运", "转载", "来源", "原视频", "http", "youtube", "youtu.be"]:
+            # 确保没有被 LLM 加上禁止词
+            for bad_word in ["搬运", "转载", "来源", "原视频", "二创", "品牌化", "中文字幕版", "方便观看", "http", "youtube", "youtu.be"]:
                 if bad_word.lower() in desc.lower():
                     raise ValueError(f"LLM 生成的简介包含禁止词: {bad_word}")
 
             return desc
 
         except Exception:
-            # LLM 失败时用模板 fallback（也不出现搬运字样）
+            # LLM 失败时用模板 fallback
             lines = [
                 f"📺 {platform_cn}新作《{work_name}》预告片",
                 "",
-                "期待已久的新作终于来了！中文字幕版预告，先睹为快～",
-                "字幕翻译仅供参考，欢迎指正！",
+                "期待已久的新作终于来了！先睹为快～",
                 "",
                 "💡 更多日韩影视预告请关注UP主",
                 "🔔 一键三连，第一时间获取最新预告！",
                 "",
-                f"#{platform_cn} #预告片 #日剧 #追剧 #新剧推荐",
+                f"#{platform_cn} #预告片 #追剧 #新剧推荐",
             ]
             return "\n".join(lines)
 

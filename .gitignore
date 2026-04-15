@@ -16,6 +16,12 @@ runs/
 *.srt
 *.vtt
 
+# 但保留品牌视频资源
+!brand/intro.mp4
+!brand/outro.mp4
+!brand/intro_source.mp4
+!brand/intro_sfx.wav
+
 # 配置（含敏感信息）
 config.yaml
 .bili_credential.json
@@ -43,3 +49,8 @@ cookies.json
 # Whisper 模型缓存
 *.bin
 *.pt
+brand/intro_frames/
+brand/outro_frames/
+brand/pixel_dog_source.png
+cookies_biliup.json
+*.log
