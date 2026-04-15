@@ -43,3 +43,9 @@ cookies.json
 # Whisper 模型缓存
 *.bin
 *.pt
+brand/intro_frames/
+brand/outro_frames/
+brand/pixel_dog_source.png
+brand/intro_sfx.wav
+cookies_biliup.json
+*.log

@@ -141,9 +141,10 @@ class TravelTheme(BaseTheme):
 {transcript_hint}
 要求:
 1. 用中文简要介绍这个地方的特色和看点（风景、氛围、文化特色等，2-3句话），要有具体内容
-2. 不要出现"搬运自"、"来自"、"转载"、"源自"、"原视频"等字样
+2. 不要出现"搬运自"、"来自"、"转载"、"源自"、"原视频"、"二创"、"品牌化"等字样
 3. 不要出现任何URL链接
-4. 语气自然，像一个旅行博主在分享见闻
+4. 不要解释字幕翻译、方便观看之类的说明性文字
+5. 语气自然，像一个旅行博主在分享见闻
 5. 最后加上一行 hashtag 标签（用 # 开头），包含: #日本旅行 #日本 #{place} 以及2-3个吸引人的标签
 6. 整体不超过200字
 
@@ -155,7 +156,7 @@ class TravelTheme(BaseTheme):
                 max_tokens=400,
             ).strip()
 
-            for bad_word in ["搬运", "转载", "来源", "原视频", "http", "youtube", "youtu.be"]:
+            for bad_word in ["搬运", "转载", "来源", "原视频", "二创", "品牌化", "中文字幕版", "方便观看", "http", "youtube", "youtu.be"]:
                 if bad_word.lower() in desc.lower():
                     raise ValueError(f"LLM 生成的简介包含禁止词: {bad_word}")
 

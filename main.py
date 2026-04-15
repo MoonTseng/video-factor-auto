@@ -257,6 +257,23 @@ def run_pipeline(config: dict, theme_name: str, target: str = None,
     output_size = os.path.getsize(output_path) / 1024 / 1024
     logger.info(f"   ✅ 输出: {output_path} ({output_size:.1f}MB)")
 
+    # ── Step 5.5: 品牌化处理（水印+片头+片尾） ─────────────
+    logger.info("🎨 Step 5.5: 品牌化处理 (水印+片头+片尾)...")
+    try:
+        from brand_video import brand_video as apply_brand
+        branded_path = os.path.join(output_dir, f"{datetime.now().strftime('%Y%m%d')}_{safe_title}_branded.mp4")
+        apply_brand(output_path, branded_path, add_intro=True, add_outro=True, add_wm=True)
+        if os.path.exists(branded_path) and os.path.getsize(branded_path) > 0:
+            # 替换为品牌化版本
+            os.remove(output_path)
+            os.rename(branded_path, output_path)
+            branded_size = os.path.getsize(output_path) / 1024 / 1024
+            logger.info(f"   ✅ 品牌化完成: {branded_size:.1f}MB (原创二创)")
+        else:
+            logger.warning("   ⚠️ 品牌化输出异常，使用原始视频")
+    except Exception as e:
+        logger.warning(f"   ⚠️ 品牌化失败: {e}，使用原始视频")
+
     # ── Step 6: 提取封面 ──────────────────────────────────
     logger.info("🖼️ Step 6: 提取封面...")
     cover_path = os.path.join(output_dir, "cover.jpg")

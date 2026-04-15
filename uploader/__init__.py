@@ -283,6 +283,7 @@ async def _upload_video_async(
         original=is_original,
         source=None if is_original else source,
         no_reprint=is_original,
+        watermark=is_original,  # 原创视频自动加B站水印
     )
     if actual_cover and os.path.exists(actual_cover):
         from bilibili_api.utils.picture import Picture
