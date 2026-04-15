@@ -270,6 +270,16 @@ def run_pipeline(config: dict, theme_name: str, target: str = None,
 
     # ── Step 7: 生成发布信息（按平台区分） ──────────────────
     logger.info("📋 Step 7: 生成发布信息...")
+
+    # 把 transcript 摘要注入 video_info，供 generate_desc 使用
+    if transcript:
+        preview_lines = []
+        for seg in transcript[:30]:  # 取前30段
+            text = seg.get("text", "").strip()
+            if text and text != f"[无对话] {video_info.get('title', '')}":
+                preview_lines.append(text)
+        video_info["transcript_preview"] = " ".join(preview_lines)[:800]
+
     publish_infos = {}
     for plat in platforms:
         publish_infos[plat] = _build_publish_info(theme, video_info, output_path, cover_path, platform=plat)
