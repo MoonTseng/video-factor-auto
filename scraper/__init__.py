@@ -222,7 +222,7 @@ def download_trailer(config: dict, trailer_info: dict, output_dir: str) -> dict:
     
     cmd.append(video_url)
     
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
     if result.returncode != 0:
         logger.error(f"yt-dlp 下载失败: {result.stderr[-500:]}")
         raise RuntimeError(f"yt-dlp 下载失败: {result.stderr[-200:]}")
@@ -371,7 +371,7 @@ def download_video(config: dict, topic: dict, output_dir: str) -> dict:
 
     cmd.append(video_url)
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
     if result.returncode != 0:
         logger.error(f"yt-dlp 下载失败: {result.stderr[-500:]}")
         raise RuntimeError(f"yt-dlp 下载失败: {result.stderr[-200:]}")

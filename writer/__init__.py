@@ -184,9 +184,7 @@ def _ai_select_topic(config: dict, candidates: list[dict]) -> dict:
         for i, t in enumerate(candidates[:10])
     )
 
-    raw = _call_llm(config, [{
-        "role": "user",
-        "content": f"""从以下日本美食/旅行视频中，选择一个最适合做中文二创解说的。
+    prompt = f"""从以下日本美食/旅行视频中，选择一个最适合做中文二创解说的。
 选择标准：
 1. 有故事性（匠人精神、个人奋斗、文化传承）
 2. 画面会丰富（料理制作过程、街景、食物特写）
@@ -195,7 +193,11 @@ def _ai_select_topic(config: dict, candidates: list[dict]) -> dict:
 候选视频：
 {candidate_text}
 
-只回复数字编号（如: 3）\"\"\"
+只回复数字编号（如: 3）"""
+
+    raw = _call_llm(config, [{
+        "role": "user",
+        "content": prompt
     }], max_tokens=2000)
 
     try:
