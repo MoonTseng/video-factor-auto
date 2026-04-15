@@ -1,4 +1,4 @@
-"""二创文案生成 — Whisper 转录日语原音 → Claude 生成中文解说脚本"""
+"""二创文案生成 - Whisper 转录日语原音 → Claude 生成中文解说脚本"""
 
 import json
 import logging
@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 def _call_llm(config: dict, messages: list[dict], max_tokens: int = 4000) -> str:
     """
-    统一 LLM 调用接口，支持 Bedrock 代理模式。
-    返回纯文本响应。
+    统一 LLM 调用接口,支持 Bedrock 代理模式.
+    返回纯文本响应.
     """
     llm_cfg = config.get("llm", {})
     backend = llm_cfg.get("backend", "bedrock_proxy")
@@ -35,7 +35,7 @@ def _call_llm(config: dict, messages: list[dict], max_tokens: int = 4000) -> str
 
 
 def _call_bedrock_proxy(llm_cfg: dict, messages: list[dict], max_tokens: int) -> str:
-    """通过公司 Bedrock 代理调用 Claude（/model/{modelId}/invoke），自动重试"""
+    """通过公司 Bedrock 代理调用 Claude(/model/{modelId}/invoke),自动重试"""
     proxy_cfg = llm_cfg.get("bedrock_proxy", {})
     base_url = proxy_cfg.get("base_url", "")
     auth_token = proxy_cfg.get("auth_token", "")
@@ -88,7 +88,7 @@ def _call_bedrock_proxy(llm_cfg: dict, messages: list[dict], max_tokens: int) ->
 
 
 def _call_openai(llm_cfg: dict, messages: list[dict], max_tokens: int) -> str:
-    """通过 OpenAI 兼容接口调用 LLM（支持小米 MiMo 等）"""
+    """通过 OpenAI 兼容接口调用 LLM(支持小米 MiMo 等)"""
     import os
     from openai import OpenAI
 
@@ -99,7 +99,7 @@ def _call_openai(llm_cfg: dict, messages: list[dict], max_tokens: int) -> str:
 
     client = OpenAI(api_key=api_key, base_url=base_url)
 
-    # 转换消息格式：Anthropic 用 system 角色，OpenAI 也支持
+    # 转换消息格式:Anthropic 用 system 角色,OpenAI 也支持
     resp = client.chat.completions.create(
         model=model,
         messages=messages,
@@ -112,7 +112,7 @@ def _call_openai(llm_cfg: dict, messages: list[dict], max_tokens: int) -> str:
 
 def transcribe_source(config: dict, audio_path: str) -> list[dict]:
     """
-    用 faster-whisper 提取源视频的日语音频转文字（带时间戳）。
+    用 faster-whisper 提取源视频的日语音频转文字(带时间戳).
     返回 [{start, end, text}, ...]
     """
     from faster_whisper import WhisperModel
@@ -131,7 +131,7 @@ def transcribe_source(config: dict, audio_path: str) -> list[dict]:
     segments, info = model.transcribe(
         audio_path,
         language="ja",
-        beam_size=beam_size,       # beam search 宽度（5 比 1 准很多）
+        beam_size=beam_size,       # beam search 宽度(5 比 1 准很多)
         vad_filter=True,           # 过滤静音
         vad_parameters=dict(
             min_silence_duration_ms=500,
@@ -153,12 +153,12 @@ def transcribe_source(config: dict, audio_path: str) -> list[dict]:
     return transcript
 
 
-# ── 话题选择（保留兼容接口） ──────────────────────────────
+# ── 话题选择(保留兼容接口) ──────────────────────────────
 
 def select_topic(config: dict, topics: list[dict]) -> dict:
     """
-    从候选视频中选择最适合二创的话题。
-    优先选有 URL 的、播放量适中的。
+    从候选视频中选择最适合二创的话题.
+    优先选有 URL 的,播放量适中的.
     """
     # 先过滤有 URL 的
     with_url = [t for t in topics if t.get("url")]
@@ -173,7 +173,7 @@ def select_topic(config: dict, topics: list[dict]) -> dict:
     except Exception as e:
         logger.warning(f"⚠️ AI 选题失败: {e}, 使用默认选择")
 
-    # 兜底：选播放量最高的那个
+    # 兜底:选播放量最高的那个
     return max(candidates, key=lambda t: t.get("view_count", 0))
 
 
@@ -186,16 +186,16 @@ def _ai_select_topic(config: dict, candidates: list[dict]) -> dict:
 
     raw = _call_llm(config, [{
         "role": "user",
-        "content": f"""从以下日本美食/旅行视频中，选择一个最适合做中文二创解说的。
-选择标准：
-1. 有故事性（匠人精神、个人奋斗、文化传承）
-2. 画面会丰富（料理制作过程、街景、食物特写）
+        "content": f"""从以下日本美食/旅行视频中,选择一个最适合做中文二创解说的.
+选择标准:
+1. 有故事性(匠人精神,个人奋斗,文化传承)
+2. 画面会丰富(料理制作过程,街景,食物特写)
 3. 容易引起中国观众共鸣
 
-候选视频：
+候选视频:
 {candidate_text}
 
-只回复数字编号（如: 3）\"\"\"
+只回复数字编号(如: 3)"""
     }], max_tokens=2000)
 
     try:
@@ -214,78 +214,78 @@ def _ai_select_topic(config: dict, candidates: list[dict]) -> dict:
 
 def generate_script(config: dict, topic: dict, transcript: list[dict]) -> dict:
     """
-    基于原视频内容 + 日语转录，用 Claude 生成中文二创解说脚本。
-    风格参考B站UP主「大鹏和你一起看世界美食」。
-
-    返回 {title, tags, description, segments: [{start_time, end_time, text, scene_desc}, ...]}
+    Generate Chinese commentary script based on original video content + Japanese transcription using Claude.
+    Style reference: Bilibili uploader 'Da Peng and You Watch World Food Together'.
+    
+    Returns {title, tags, description, segments: [{start_time, end_time, text, scene_desc}, ...]}
     """
-    # 准备转录文本（带时间戳）
+    # 准备转录文本(带时间戳)
     transcript_text = _format_transcript(transcript)
     video_duration = transcript[-1]["end"] if transcript else 600
 
-    # 计算合适的分段数（每 15-25 秒一段解说）
+    # 计算合适的分段数(每 15-25 秒一段解说)
     segment_count = max(8, int(video_duration / 20))
 
-    prompt = f"""你是一个B站美食/旅行视频的中文解说文案写手。
-你的风格类似UP主「大鹏和你一起看世界美食」——口语化、亲切自然、像朋友聊天，
-同时夹带知识科普，偶尔幽默但不过度。
+    prompt = f"""You are a Chinese commentary scriptwriter for Bilibili food/travel videos.
+Your style is similar to uploader 'Da Peng and You Watch World Food Together' - conversational, friendly, like chatting with friends,
+while including knowledge popularization, occasional humor but not excessive.
 
-现在有一个日本视频需要你写中文解说：
+Now there is a Japanese video that needs Chinese commentary:
 
-【视频标题】{topic.get('title', '')}
-【视频描述】{topic.get('description', '')}
-【视频主题】{topic.get('suggested_theme', topic.get('title', ''))}
-【视频时长】{video_duration:.0f} 秒
-【频道】{topic.get('channel', '')}
+[Video Title]{topic.get('title', '')}
+[Video Description]{topic.get('description', '')}
+[Video Theme]{topic.get('suggested_theme', topic.get('title', ''))}
+[Video Duration]{video_duration} seconds
+[Channel]{topic.get('channel', '')}
 
-【日语原文转录（带时间戳）】
+[Japanese Transcript (with timestamps)]
 {transcript_text}
 
-请基于以上内容，写一份完整的中文二创解说脚本。
+Please write a complete Chinese commentary script based on the above content.
 
-要求：
-1. 【不是翻译】—— 是基于视频内容的全新中文解说，用你自己的方式讲这个故事
-2. 【口语化】—— 像在跟观众聊天，"你看这个师傅"、"说实话我第一次看到..."
-3. 【有节奏】—— 开头要有吸引力（hook），中间有起伏，结尾有总结感悟
-4. 【带知识】—— 适当介绍食材、工艺、文化背景，但不要像念课文
-5. 【配合画面】—— 每段解说对应一个时间区间，要和画面内容匹配
-6. 【时间对齐】—— 分成 {segment_count} 段左右，覆盖整个视频时长
-7. 【语速适中】—— 每秒约 3-4 个汉字，别太密集，留给观众看画面的时间
+Requirements:
+1. [Not translation] - It is a brand new Chinese commentary based on the video content, tell the story in your own way
+2. [Conversational] - Like chatting with the audience, 'Look at this master', 'To be honest, the first time I saw...'
+3. [Rhythmic] - The beginning must be attractive (hook), the middle has ups and downs, and the ending has summary and reflection
+4. [With knowledge] - Appropriately introduce ingredients, craftsmanship, cultural background, but don't read like a textbook
+5. [Match the picture] - Each commentary corresponds to a time interval, must match the picture content
+6. [Time alignment] - Divide into about {segment_count} segments, covering the entire video duration
+7. [Moderate speed] - About 3-4 Chinese characters per second, not too dense, leave time for the audience to watch the picture
 
-输出格式（严格 JSON）：
+Output format (strict JSON):
 {{
-  "title": "中文视频标题（要吸引人，可以用问号或感叹号）",
-  "tags": ["标签1", "标签2", ...],
-  "description": "视频简介（2-3句话）",
+  "title": "Chinese video title (must be attractive, can use question marks or exclamation marks)",
+  "tags": ["tag1", "tag2", ...],
+  "description": "Video introduction (2-3 sentences)",
   "segments": [
     {{
       "start_time": 0.0,
       "end_time": 15.0,
-      "text": "解说文字",
-      "scene_desc": "对应画面的简要描述"
+      "text": "Chinese commentary text for this segment",
+      "scene_desc": "Scene description (what's happening in the video)"
     }},
     ...
   ]
 }}
 
-注意：
-- start_time 和 end_time 是秒数（浮点数）
-- 第一段从 0 或接近 0 开始
-- 最后一段的 end_time 应接近视频总时长 {video_duration:.0f}
-- segments 之间可以有短暂间隔（让观众看画面）
-- 每段 text 的字数 = (end_time - start_time) × 3 左右
+Note:
+- start_time and end_time are in seconds (floating point)
+- The first segment starts at 0 or close to 0
+- The last segment's end_time should be close to total video duration {video_duration:.0f}
+- There can be short intervals between segments (let the audience watch the picture)
+- The number of characters in each text segment = (end_time - start_time) * 3 approximately
 
-只输出 JSON，不要其他内容。"""
+Only output JSON, no other content."""
 
     logger.info(f"✍️ 生成二创解说脚本... (目标 ~{segment_count} 段)")
 
     raw_text = _call_llm(config, [{"role": "user", "content": prompt}], max_tokens=8000)
 
-    # 解析 JSON（兼容 markdown 包裹）
+    # 解析 JSON(兼容 markdown 包裹)
     script = _parse_json_response(raw_text)
 
     if not script or "segments" not in script:
-        raise ValueError(f"文案生成失败，无法解析 JSON:\n{raw_text[:500]}")
+        raise ValueError(f"文案生成失败,无法解析 JSON:\n{raw_text[:500]}")
 
     # 验证和修正
     script = _validate_script(script, video_duration)
@@ -297,7 +297,7 @@ def generate_script(config: dict, topic: dict, transcript: list[dict]) -> dict:
     return script
 
 
-# ── 预告片字幕翻译（日语 → 中文 SRT） ────────────────────
+# ── 预告片字幕翻译(日语 → 中文 SRT) ────────────────────
 
 def translate_transcript_to_srt(config: dict, transcript: list[dict],
                                  output_path: str,
@@ -305,21 +305,21 @@ def translate_transcript_to_srt(config: dict, transcript: list[dict],
                                  video_title: str = "",
                                  video_theme: str = "") -> str:
     """
-    将 Whisper 日语转录翻译成中文，并输出 SRT 字幕文件。
-    分批翻译以避免超出 token 限制。
+    将 Whisper 日语转录翻译成中文,并输出 SRT 字幕文件.
+    分批翻译以避免超出 token 限制.
 
     参数:
         config: 配置字典
-        transcript: [{start, end, text}, ...] — transcribe_source 的输出
+        transcript: [{start, end, text}, ...] - transcribe_source 的输出
         output_path: SRT 文件输出路径
-        batch_size: 每批翻译多少条（默认 20）
-        video_title: 视频标题（帮助 LLM 理解上下文，纠正转录错误）
-        video_theme: 视频主题/类型（如 "Netflix预告片"、"日本美食"）
+        batch_size: 每批翻译多少条(默认 20)
+        video_title: 视频标题(帮助 LLM 理解上下文,纠正转录错误)
+        video_theme: 视频主题/类型(如 "Netflix预告片","日本美食")
     返回:
         SRT 文件路径
     """
     if not transcript:
-        raise ValueError("转录为空，无法翻译")
+        raise ValueError("转录为空,无法翻译")
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -354,37 +354,37 @@ def _translate_batch(config: dict, batch: list[dict],
     for i, seg in enumerate(batch):
         lines.append(f"{i+1}. [{seg['start']:.1f}s-{seg['end']:.1f}s] {seg['text']}")
 
-    # 构建上下文提示（帮助 LLM 理解内容、纠正转录错误）
+    # 构建上下文提示(帮助 LLM 理解内容,纠正转录错误)
     context_hint = ""
     if video_title or video_theme:
-        context_hint = "\n\n背景信息（用于理解上下文和纠正语音识别错误）:\n"
+        context_hint = "\n\n背景信息(用于理解上下文和纠正语音识别错误):\n"
         if video_title:
             context_hint += f"- 视频标题: {video_title}\n"
         if video_theme:
             context_hint += f"- 视频类型: {video_theme}\n"
-        context_hint += "注意: 原文是语音识别(Whisper)自动生成的，可能有错字/错词。请根据上下文和视频主题智能纠正后再翻译。\n"
+        context_hint += "注意: 原文是语音识别(Whisper)自动生成的,可能有错字/错词.请根据上下文和视频主题智能纠正后再翻译.\n"
 
-    prompt = f"""请将以下日语字幕翻译成中文。这是一段影视预告片的字幕。
+    prompt = f"""请将以下日语字幕翻译成中文.这是一段影视预告片的字幕.
 {context_hint}
-要求：
-1. 翻译要自然流畅，符合中文观众的观看习惯
-2. 保持原句的语气和情感（紧张、悬疑、热血等）
-3. 人名保留日文/韩文原名，后面括号加中文注音（仅首次出现时）
-4. 如果原文是旁白/画外音，翻译时保持旁白语气
-5. 短句保持简短，不要过度意译
-6. 如果发现明显的语音识别错误（如乱码、不通顺的词），请根据上下文推断正确含义后翻译
+要求:
+1. 翻译要自然流畅,符合中文观众的观看习惯
+2. 保持原句的语气和情感(紧张,悬疑,热血等)
+3. 人名保留日文/韩文原名,后面括号加中文注音(仅首次出现时)
+4. 如果原文是旁白/画外音,翻译时保持旁白语气
+5. 短句保持简短,不要过度意译
+6. 如果发现明显的语音识别错误(如乱码,不通顺的词),请根据上下文推断正确含义后翻译
 
 原文:
 {chr(10).join(lines)}
 
-输出格式（严格 JSON 数组）：
+输出格式(严格 JSON 数组):
 [
   {{"id": 1, "zh": "中文翻译"}},
   {{"id": 2, "zh": "中文翻译"}},
   ...
 ]
 
-只输出 JSON 数组，不要其他内容。"""
+只输出 JSON 数组,不要其他内容."""
 
     raw = _call_llm(config, [{"role": "user", "content": prompt}], max_tokens=4000)
 
@@ -422,8 +422,8 @@ def _translate_batch(config: dict, batch: list[dict],
             })
         return result
     else:
-        # 翻译失败，返回原文
-        logger.warning("⚠️ 翻译解析失败，使用日语原文")
+        # 翻译失败,返回原文
+        logger.warning("⚠️ 翻译解析失败,使用日语原文")
         return [{"start": s["start"], "end": s["end"],
                  "ja_text": s["text"], "zh_text": s["text"]} for s in batch]
 
@@ -454,12 +454,12 @@ def save_script(script: dict, run_dir: str) -> str:
     script_dir = os.path.join(run_dir, "script")
     os.makedirs(script_dir, exist_ok=True)
 
-    # 保存 JSON（程序用）
+    # 保存 JSON(程序用)
     json_path = os.path.join(script_dir, "script.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(script, f, ensure_ascii=False, indent=2)
 
-    # 保存可读文本（人看）
+    # 保存可读文本(人看)
     txt_path = os.path.join(script_dir, "script.txt")
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(f"标题: {script['title']}\n")
@@ -471,7 +471,7 @@ def save_script(script: dict, run_dir: str) -> str:
             f.write(f"画面: {seg.get('scene_desc', '')}\n")
             f.write(f"解说: {seg['text']}\n\n")
 
-    # 保存转录（如果有）
+    # 保存转录(如果有)
     return json_path
 
 

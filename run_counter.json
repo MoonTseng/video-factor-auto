@@ -1,4 +1,6 @@
 {
-  "count": 5,
-  "last_updated": "2026-04-15T10:06:12.033195"
+  "count": 9,
+  "last_updated": "2026-04-15T14:14:35.007972",
+  "last_status": "failed",
+  "last_error": "YouTube cookies missing login credentials"
 }

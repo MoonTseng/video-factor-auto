@@ -250,3 +250,97 @@ RuntimeError: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manu
 [2026-04-15 10:06:21] 脚本执行失败，返回码: 1
 [2026-04-15 10:06:21] 需要发送错误通知
 [2026-04-15 10:06:21] 定时任务执行完成
+2026-04-15 12:00:19,959 | INFO | ============================================================
+2026-04-15 12:00:19,959 | INFO | 定时搬运任务开始
+2026-04-15 12:00:19,959 | INFO | 当前时间: 2026-04-15 12:00:19
+2026-04-15 12:00:19,961 | INFO | 选择主题: travel (索引: 1)
+2026-04-15 12:00:19,961 | INFO | 使用计数器选择主题，当前计数: 5
+2026-04-15 12:00:19,961 | INFO | 开始运行主题: travel
+2026-04-15 12:00:19,961 | INFO | 已设置代理环境变量
+2026-04-15 12:00:19,988 | INFO | 📁 运行目录: runs/travel_20260415_120019
+2026-04-15 12:00:19,988 | INFO | 🎨 主题: travel | 分区: 250 | 音频: subtitle_only
+2026-04-15 12:00:19,988 | INFO | 🔍 Step 1: 使用主题默认搜索...
+2026-04-15 12:00:20,059 | INFO |    搜索词: ['日本 鉄道 車窓 旅', '日本 電車 海沿い 絶景', '日本 ローカル線 旅']...
+2026-04-15 12:00:28,315 | INFO |    共 21 个候选视频，LLM 筛选中...
+2026-04-15 12:00:28,316 | ERROR | 运行主题 travel 时发生错误: invalid character '，' (U+FF0C) (__init__.py, line 217)
+2026-04-15 12:00:28,317 | INFO | 通知: ❌ 视频搬运失败 - TRAVEL
+主题: TRAVEL
+错误: invalid character '，' (U+FF0C) (__init__.py, line 217)
+时间: 2026-04-15 12:00:28
+状态: 失败
+2026-04-15 12:00:28,321 | INFO | 微信通知未启用
+2026-04-15 12:00:28,321 | ERROR | 定时搬运任务失败
+2026-04-15 14:00:33,554 | INFO | ============================================================
+2026-04-15 14:00:33,554 | INFO | 定时搬运任务开始
+2026-04-15 14:00:33,554 | INFO | 当前时间: 2026-04-15 14:00:33
+2026-04-15 14:00:33,556 | INFO | 选择主题: food (索引: 2)
+2026-04-15 14:00:33,559 | INFO | 使用计数器选择主题，当前计数: 6
+2026-04-15 14:00:33,559 | INFO | 开始运行主题: food
+2026-04-15 14:00:33,559 | INFO | 已设置代理环境变量
+2026-04-15 14:00:33,579 | INFO | 📁 运行目录: runs/food_20260415_140033
+2026-04-15 14:00:33,579 | INFO | 🎨 主题: food | 分区: 211 | 音频: subtitle_only
+2026-04-15 14:00:33,579 | INFO | 🔍 Step 1: 使用主题默认搜索...
+2026-04-15 14:00:33,632 | INFO |    搜索词: ['ラーメン 職人 密着', '天ぷら 職人', '寿司 職人 密着']...
+2026-04-15 14:00:42,677 | INFO |    共 25 个候选视频，LLM 筛选中...
+2026-04-15 14:00:42,679 | ERROR | 运行主题 food 时发生错误: unterminated string literal (detected at line 250) (__init__.py, line 250)
+2026-04-15 14:00:42,679 | INFO | 通知: ❌ 视频搬运失败 - FOOD
+主题: FOOD
+错误: unterminated string literal (detected at line 250) (__init__.py, line 250)
+时间: 2026-04-15 14:00:42
+状态: 失败
+2026-04-15 14:00:42,683 | INFO | 微信通知未启用
+2026-04-15 14:00:42,683 | ERROR | 定时搬运任务失败
+2026-04-15 14:10:56,988 | INFO | ============================================================
+2026-04-15 14:10:56,988 | INFO | 定时搬运任务开始
+2026-04-15 14:10:56,988 | INFO | 当前时间: 2026-04-15 14:10:56
+2026-04-15 14:10:56,989 | INFO | 选择主题: netflix (索引: 3)
+2026-04-15 14:10:56,990 | INFO | 使用计数器选择主题，当前计数: 7
+2026-04-15 14:10:56,990 | INFO | 开始运行主题: netflix
+2026-04-15 14:10:56,990 | INFO | 已设置代理环境变量
+2026-04-15 14:10:57,000 | INFO | 📁 运行目录: runs/netflix_20260415_141057
+2026-04-15 14:10:57,000 | INFO | 🎨 主题: netflix | 分区: 183 | 音频: subtitle_only
+2026-04-15 14:10:57,000 | INFO | 🔍 Step 1: 使用主题默认搜索...
+2026-04-15 14:10:57,034 | INFO |    搜索词: ['Netflix Japan 2026 予告', 'Netflix 日本 2026 新作 予告編', 'Netflix Japan 2026 trailer']...
+2026-04-15 14:11:07,521 | INFO |    共 17 个候选视频，LLM 筛选中...
+2026-04-15 14:11:07,522 | WARNING |    ⚠️ LLM 选片调用失败: No module named 'openai'
+2026-04-15 14:11:07,522 | WARNING |    ⚠️ LLM 筛选失败，fallback 选播放量最高
+2026-04-15 14:11:07,522 | INFO | 📌 视频: 『戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC』ティーザー予告編｜Netflix Japan
+2026-04-15 14:11:07,522 | INFO | 📥 Step 2: 下载视频...
+2026-04-15 14:11:07,522 | INFO | 📥 下载视频: 『戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC』ティーザー予告編｜Netflix Japan
+2026-04-15 14:11:07,522 | INFO | 🍪 使用cookies文件: /Users/raytseng/hermes/video-factor-auto/www.youtube.com_cookies.txt
+2026-04-15 14:11:09,093 | ERROR | yt-dlp 下载失败: ERROR: [youtube] TVXDQEPVQ8Q: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+2026-04-15 14:11:09,093 | ERROR | 运行主题 netflix 时发生错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+2026-04-15 14:11:09,094 | INFO | 通知: ❌ 视频搬运失败 - NETFLIX
+主题: NETFLIX
+错误: yt-dlp 下载失败: -do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+
+时间: 2026-04-15 14:11:09
+状态: 失败
+2026-04-15 14:11:09,099 | INFO | 微信通知未启用
+2026-04-15 14:11:09,099 | ERROR | 定时搬运任务失败
+
+======================================================================
+定时任务执行报告 - 2026-04-15 14:14:56
+======================================================================
+
+状态: ❌ 失败 (YouTube cookies缺少登录凭证)
+
+已修复:
+1. writer/__init__.py Python语法错误
+2. 安装deno运行时 (v2.7.12)
+3. 更新计数器: 8 -> 9 (下次主题: travel)
+
+主要问题:
+YouTube cookies文件缺少登录字段 (SID, HSID, SSID, SAPISID, LOGIN_INFO)
+错误: "Sign in to confirm you're not a bot"
+视频ID: TVXDQEPVQ8Q
+
+需要用户操作:
+1. 在浏览器登录YouTube
+2. 使用扩展导出cookies到 www.youtube.com_cookies.txt
+3. 验证cookies有效性
+
+下次运行: travel主题 (计数器9)
+======================================================================
