@@ -21,6 +21,8 @@ config.yaml
 .bili_credential.json
 qrcode_login.png
 history.json
+cookies.json
+.cron_state.json
 
 # 浏览器状态（抖音/头条登录态，几百MB）
 .douyin_state/

@@ -510,3 +510,272 @@ def _extract_work_name(title: str) -> str:
     result = re.sub(r'^(韓ドラ|ドラマ)\s*', '', result)
 
     return result.strip() or title[:30]
+
+
+# ═══════════════════════════════════════════════════════
+#  biliup CLI 上传（开源 Rust 实现，更快更稳定）
+# ═══════════════════════════════════════════════════════
+
+def upload_via_biliup(
+    config: dict,
+    video_path: str,
+    title: str = "",
+    desc: str = "",
+    tags: list[str] = None,
+    cover_path: str = None,
+    source_url: str = "",
+    tid: int = None,
+) -> dict:
+    """
+    使用 biliup CLI (Rust) 上传视频到B站。
+
+    优点：上传速度更快、并发分块、更稳定。
+    需要 cookies.json 在项目根目录（从 .bili_credential.json 自动转换）。
+
+    返回:
+        {"bvid": "BV...", "aid": 12345, "url": "..."}
+    """
+    import subprocess
+
+    bili_cfg = config.get("bilibili", {})
+    project_root = Path(__file__).parent.parent
+    cookie_file = project_root / "cookies.json"
+
+    # 确保 cookies.json 存在（从 .bili_credential.json 自动转换）
+    _ensure_biliup_cookies(project_root, cookie_file)
+
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"视频文件不存在: {video_path}")
+
+    # 参数处理
+    if tags is None:
+        tags = bili_cfg.get("default_tags", ["日剧", "预告片", "2026新番", "Netflix"])
+    tag_str = ",".join(t[:20] for t in tags[:10])
+
+    if not title:
+        title = "新视频"
+    title = title[:80]
+    desc = (desc or "")[:2000]
+
+    if tid is None:
+        tid = bili_cfg.get("tid", 183)
+
+    copyright_type = bili_cfg.get("copyright", 2)
+    source = source_url or bili_cfg.get("default_source", "YouTube")
+
+    # 自动截取封面
+    actual_cover = cover_path
+    temp_cover = None
+    if not actual_cover or not os.path.exists(actual_cover):
+        temp_cover = video_path + ".cover.jpg"
+        subprocess.run(
+            ["ffmpeg", "-y", "-ss", "10", "-i", video_path,
+             "-vframes", "1", "-q:v", "2", "-update", "1", temp_cover],
+            capture_output=True,
+        )
+        if os.path.exists(temp_cover):
+            actual_cover = temp_cover
+            logger.info("🖼️ 自动从视频截取封面")
+
+    # 构建 biliup 命令
+    cmd = [
+        "biliup", "upload",
+        "--user-cookie", str(cookie_file),
+        "--copyright", str(copyright_type),
+        "--tid", str(tid),
+        "--title", title,
+        "--tag", tag_str,
+    ]
+    if desc:
+        cmd.extend(["--desc", desc])
+    if copyright_type == 2 and source:
+        cmd.extend(["--source", source])
+    if actual_cover and os.path.exists(actual_cover):
+        cmd.extend(["--cover", actual_cover])
+    cmd.append(video_path)
+
+    # 执行上传
+    file_size_mb = os.path.getsize(video_path) / 1024 / 1024
+    logger.info(f"🚀 biliup 上传: 《{title}》({file_size_mb:.1f}MB)")
+    logger.info(f"   分区={tid}, 标签={tag_str}, 版权={'原创' if copyright_type == 1 else '转载'}")
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+
+    # 清理临时封面
+    if temp_cover and os.path.exists(temp_cover):
+        os.unlink(temp_cover)
+
+    if result.returncode != 0:
+        logger.error(f"❌ biliup 上传失败:\n{result.stderr}\n{result.stdout}")
+        raise RuntimeError(f"biliup 上传失败: {result.stderr}")
+
+    # 解析输出，提取 BV 号
+    output = result.stdout + result.stderr
+    logger.info(f"📋 biliup 输出:\n{output}")
+
+    bvid = ""
+    aid = ""
+    bv_match = re.search(r'(BV[\w]+)', output)
+    if bv_match:
+        bvid = bv_match.group(1)
+    aid_match = re.search(r'"aid"\s*:\s*(\d+)', output)
+    if aid_match:
+        aid = int(aid_match.group(1))
+
+    url = f"https://www.bilibili.com/video/{bvid}" if bvid else ""
+    if bvid:
+        logger.info(f"🎉 发布成功! {url}")
+    else:
+        logger.warning(f"⚠️ 上传完成但未解析到 BV 号")
+
+    return {"bvid": bvid, "aid": aid, "url": url, "raw_output": output}
+
+
+def _ensure_biliup_cookies(project_root: Path, cookie_file: Path):
+    """从 .bili_credential.json 自动生成 biliup 的 cookies.json"""
+    cred_file = project_root / ".bili_credential.json"
+
+    if cookie_file.exists():
+        # 如果 credential 更新了，同步过来
+        if cred_file.exists():
+            cred_mtime = cred_file.stat().st_mtime
+            cookie_mtime = cookie_file.stat().st_mtime
+            if cred_mtime <= cookie_mtime:
+                return  # cookies.json 已是最新
+
+    if not cred_file.exists():
+        raise FileNotFoundError(
+            "未找到B站凭证！请先运行扫码登录:\n"
+            "  python -c \"from uploader import qrcode_login; qrcode_login()\""
+        )
+
+    cred = json.loads(cred_file.read_text())
+    cookies = {
+        "SESSDATA": cred.get("SESSDATA", ""),
+        "bili_jct": cred.get("bili_jct", ""),
+        "DedeUserID": cred.get("DedeUserID", cred.get("dedeuserid", "")),
+        "buvid3": cred.get("buvid3", ""),
+        "buvid4": cred.get("buvid4", ""),
+        "ac_time_value": cred.get("ac_time_value", ""),
+    }
+    cookie_file.write_text(json.dumps(cookies, indent=2))
+    logger.info(f"🔄 已从 .bili_credential.json 同步到 cookies.json")
+
+
+# ═══════════════════════════════════════════════════════
+#  上传后清理：删除大文件，保留元数据
+# ═══════════════════════════════════════════════════════
+
+def cleanup_run(run_dir: str, keep_metadata: bool = True) -> dict:
+    """
+    清理已上传的 run 目录，释放磁盘空间。
+
+    策略：
+    - 删除 source/ 下的原始视频和音频（最大的文件）
+    - 删除 output/ 下的合成视频
+    - 保留 run_info.json、subtitles.srt、script/、output/cover.jpg（元数据+封面）
+    - 保留 output/publish_info.json
+
+    参数:
+        run_dir: runs/xxx 目录路径
+        keep_metadata: 是否保留元数据文件（默认 True）
+
+    返回:
+        {"freed_mb": float, "deleted_files": int}
+    """
+    import shutil
+
+    run_path = Path(run_dir)
+    if not run_path.exists():
+        return {"freed_mb": 0, "deleted_files": 0}
+
+    freed_bytes = 0
+    deleted_count = 0
+
+    # 要保留的文件
+    keep_patterns = {
+        "run_info.json", "subtitles.srt", "publish_info.json", "cover.jpg",
+    }
+    keep_dirs = {"script"}  # 保留文案脚本
+
+    # 删除 source/ 目录（原始下载的视频+音频，最占空间）
+    source_dir = run_path / "source"
+    if source_dir.exists():
+        for f in source_dir.iterdir():
+            if f.is_file():
+                freed_bytes += f.stat().st_size
+                f.unlink()
+                deleted_count += 1
+                logger.debug(f"  🗑️ 删除 {f.name}")
+        # 删除空目录
+        if not any(source_dir.iterdir()):
+            source_dir.rmdir()
+
+    # 删除 output/ 下的视频文件（保留封面和 publish_info）
+    output_dir = run_path / "output"
+    if output_dir.exists():
+        for f in output_dir.iterdir():
+            if f.is_file() and f.name not in keep_patterns:
+                if f.suffix in (".mp4", ".mkv", ".avi", ".mov", ".flv", ".m4a", ".mp3"):
+                    freed_bytes += f.stat().st_size
+                    f.unlink()
+                    deleted_count += 1
+                    logger.debug(f"  🗑️ 删除 {f.name}")
+
+    freed_mb = freed_bytes / 1024 / 1024
+    if freed_mb > 0:
+        logger.info(f"🧹 清理 {run_path.name}: 释放 {freed_mb:.1f}MB, 删除 {deleted_count} 个文件")
+
+    return {"freed_mb": freed_mb, "deleted_files": deleted_count}
+
+
+def cleanup_uploaded_runs(runs_dir: str = "runs", dry_run: bool = False) -> dict:
+    """
+    批量清理所有已上传成功的 run 目录。
+
+    只清理 run_info.json 中 uploaded=True 的目录。
+
+    参数:
+        runs_dir: runs 根目录
+        dry_run: True 则只报告不实际删除
+
+    返回:
+        {"total_freed_mb": float, "cleaned_runs": int}
+    """
+    runs_path = Path(runs_dir)
+    total_freed = 0
+    cleaned = 0
+
+    for run_dir in sorted(runs_path.iterdir()):
+        if not run_dir.is_dir():
+            continue
+
+        info_file = run_dir / "run_info.json"
+        if not info_file.exists():
+            continue
+
+        try:
+            info = json.loads(info_file.read_text())
+        except Exception:
+            continue
+
+        if not info.get("uploaded"):
+            continue
+
+        if dry_run:
+            # 计算可释放空间
+            size = sum(
+                f.stat().st_size for f in run_dir.rglob("*")
+                if f.is_file() and f.suffix in (".mp4", ".mkv", ".m4a", ".mp3", ".mov")
+            )
+            logger.info(f"  [DRY] {run_dir.name}: 可释放 {size / 1024 / 1024:.1f}MB")
+            total_freed += size / 1024 / 1024
+            cleaned += 1
+        else:
+            result = cleanup_run(str(run_dir))
+            total_freed += result["freed_mb"]
+            if result["freed_mb"] > 0:
+                cleaned += 1
+
+    logger.info(f"🧹 清理完成: {cleaned} 个目录, 共释放 {total_freed:.1f}MB")
+    return {"total_freed_mb": total_freed, "cleaned_runs": cleaned}
