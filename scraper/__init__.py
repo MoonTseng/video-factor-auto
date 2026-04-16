@@ -31,7 +31,8 @@ _js_runtime: str | None = None  # "node", "deno", "bun" 或 ""
 
 
 def _detect_js_runtime() -> str:
-    """探测可用的 JS 运行时（yt-dlp 解 YouTube n-challenge 必需）"""
+    """探测可用的 JS 运行时（yt-dlp 解 YouTube n-challenge 必需）。
+    如果没有任何运行时，自动尝试安装 deno。"""
     global _js_runtime
     if _js_runtime is not None:
         return _js_runtime
@@ -41,8 +42,28 @@ def _detect_js_runtime() -> str:
             _js_runtime = rt
             logger.info(f"🔧 检测到 JS 运行时: {rt}")
             return _js_runtime
+
+    # 没有任何 JS runtime —— 自动安装 deno（最轻量、yt-dlp 默认支持）
+    logger.warning("⚠️ 未检测到 JS 运行时，尝试自动安装 deno...")
+    try:
+        install = subprocess.run(
+            ["sh", "-c", "curl -fsSL https://deno.land/install.sh | sh"],
+            capture_output=True, text=True, timeout=60,
+        )
+        deno_bin = os.path.join(os.path.expanduser("~"), ".deno", "bin")
+        if os.path.isdir(deno_bin):
+            os.environ["PATH"] = deno_bin + os.pathsep + os.environ.get("PATH", "")
+        if shutil.which("deno"):
+            _js_runtime = "deno"
+            logger.info("✅ deno 自动安装成功")
+            return _js_runtime
+        else:
+            logger.error(f"❌ deno 安装后仍不可用: {install.stderr[-200:]}")
+    except Exception as e:
+        logger.error(f"❌ deno 自动安装失败: {e}")
+
     _js_runtime = ""
-    logger.warning("⚠️ 未检测到 JS 运行时 (deno/node/bun)，YouTube 下载可能失败")
+    logger.warning("⚠️ JS 运行时不可用，YouTube 下载可能会被 bot 验证拦截")
     return _js_runtime
 
 
