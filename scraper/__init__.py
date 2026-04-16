@@ -25,8 +25,32 @@ def _get_ytdlp_bin() -> str:
     return "yt-dlp"
 
 
-# 缓存 --cookies-from-browser 可用性，避免每次都试
+# 缓存探测结果，进程生命周期内只探测一次
 _browser_cookies_available: bool | None = None
+_js_runtime: str | None = None  # "node", "deno", "bun" 或 ""
+
+
+def _detect_js_runtime() -> str:
+    """探测可用的 JS 运行时（yt-dlp 解 YouTube n-challenge 必需）"""
+    global _js_runtime
+    if _js_runtime is not None:
+        return _js_runtime
+    import shutil
+    for rt in ("deno", "node", "bun"):
+        if shutil.which(rt):
+            _js_runtime = rt
+            logger.info(f"🔧 检测到 JS 运行时: {rt}")
+            return _js_runtime
+    _js_runtime = ""
+    logger.warning("⚠️ 未检测到 JS 运行时 (deno/node/bun)，YouTube 下载可能失败")
+    return _js_runtime
+
+
+def _add_js_runtime_args(cmd: list[str]) -> None:
+    """为 yt-dlp 命令添加 JS 运行时参数"""
+    rt = _detect_js_runtime()
+    if rt:
+        cmd.extend(["--js-runtimes", rt])
 
 
 def _add_cookies_args(cmd: list[str]) -> None:
@@ -264,6 +288,7 @@ def download_trailer(config: dict, trailer_info: dict, output_dir: str) -> dict:
         cmd.extend(["--proxy", proxy])
     
     _add_cookies_args(cmd)
+    _add_js_runtime_args(cmd)
     
     cmd.append(video_url)
     
@@ -317,6 +342,7 @@ def _ytdlp_search(query: str, proxy: str = "", max_results: int = 10) -> list[di
         cmd.extend(["--proxy", proxy])
     
     _add_cookies_args(cmd)
+    _add_js_runtime_args(cmd)
     
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
@@ -406,6 +432,7 @@ def download_video(config: dict, topic: dict, output_dir: str) -> dict:
         cmd.extend(["--proxy", proxy])
 
     _add_cookies_args(cmd)
+    _add_js_runtime_args(cmd)
 
     cmd.append(video_url)
 
