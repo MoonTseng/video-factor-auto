@@ -258,11 +258,11 @@ def run_pipeline(config: dict, theme_name: str, target: str = None,
     logger.info(f"   ✅ 输出: {output_path} ({output_size:.1f}MB)")
 
     # ── Step 5.5: 品牌化处理（水印+片头+片尾） ─────────────
-    logger.info("🎨 Step 5.5: 品牌化处理 (水印+片头+片尾)...")
+    logger.info("🎨 Step 5.5: 品牌化处理 (片头+片尾)...")
     try:
         from brand_video import brand_video as apply_brand
         branded_path = os.path.join(output_dir, f"{datetime.now().strftime('%Y%m%d')}_{safe_title}_branded.mp4")
-        apply_brand(output_path, branded_path, add_intro=True, add_outro=True, add_wm=True)
+        apply_brand(output_path, branded_path, add_intro=True, add_outro=True, add_wm=False)
         if os.path.exists(branded_path) and os.path.getsize(branded_path) > 0:
             # 替换为品牌化版本
             os.remove(output_path)

@@ -163,7 +163,7 @@ def concat_videos(parts, output_path):
 
 
 def brand_video(input_path, output_path=None, 
-                add_intro=True, add_outro=True, add_wm=True):
+                add_intro=True, add_outro=True, add_wm=False):
     """
     主函数: 对视频进行完整的品牌化处理
     
