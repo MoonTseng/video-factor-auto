@@ -113,17 +113,30 @@ echo "🧪 Step 5: 测试 YouTube 下载..."
 TEST_URL="https://www.youtube.com/watch?v=1FxydtMSorg"
 echo "   测试 URL: $TEST_URL"
 
-CMD="$YTDLP --cookies $COOKIES_FILE --js-runtimes $JS_RUNTIME --remote-components ejs:github --skip-download -v $TEST_URL"
-echo "   命令: $CMD"
+# 优先测试 cookies-from-browser（最可靠）
 echo ""
-
-if $CMD 2>&1 | tail -20; then
-    echo ""
-    echo "✅✅✅ 测试成功！YouTube 下载正常工作！"
+echo "   === 测试 A: --cookies-from-browser chrome ==="
+CMD_A="$YTDLP --cookies-from-browser chrome --js-runtimes $JS_RUNTIME --remote-components ejs:github --skip-download $TEST_URL"
+echo "   命令: $CMD_A"
+if $CMD_A 2>&1; then
+    echo "   ✅ cookies-from-browser chrome 成功！"
+    COOKIE_METHOD="browser"
 else
+    echo "   ❌ cookies-from-browser chrome 失败"
+    COOKIE_METHOD="file"
+fi
+
+# 如果 browser 失败，测试静态文件
+if [ "$COOKIE_METHOD" = "file" ]; then
     echo ""
-    echo "❌ 测试失败。完整日志："
-    $YTDLP --cookies "$COOKIES_FILE" --js-runtimes "$JS_RUNTIME" --remote-components ejs:github --skip-download -v "$TEST_URL" 2>&1 || true
+    echo "   === 测试 B: --cookies 文件 ==="
+    CMD_B="$YTDLP --cookies $COOKIES_FILE --js-runtimes $JS_RUNTIME --remote-components ejs:github --skip-download $TEST_URL"
+    echo "   命令: $CMD_B"
+    if $CMD_B 2>&1; then
+        echo "   ✅ cookies 文件成功！"
+    else
+        echo "   ❌ cookies 文件也失败"
+    fi
 fi
 
 echo ""

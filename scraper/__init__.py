@@ -22,7 +22,6 @@ def _get_ytdlp_bin() -> str:
 
 
 # 缓存探测结果，进程生命周期内只探测一次
-_browser_cookies_available: bool | None = None
 _js_runtime: str | None = None  # "node", "deno", "bun" 或 ""
 
 
@@ -105,43 +104,31 @@ def _add_js_runtime_args(cmd: list[str]) -> None:
 def _add_cookies_args(cmd: list[str]) -> None:
     """为 yt-dlp 命令添加 cookies 参数。
     
-    优先级：
-    1. --cookies-from-browser chrome  (本地浏览器，永不过期)
-    2. --cookies www.youtube.com_cookies.txt  (手动导出，可能过期)
-    
-    如果两者都不可用则不添加（部分视频无需登录也能下载）。
+    策略：直接使用 --cookies-from-browser chrome（macOS 本地环境）。
+    仅当 Chrome 不存在时 fallback 到静态 cookies 文件。
     """
-    global _browser_cookies_available
+    import platform
 
-    # 方案1：从本地 Chrome 浏览器读取 cookies（推荐）
-    if _browser_cookies_available is None:
-        try:
-            probe = subprocess.run(
-                [_get_ytdlp_bin(), "--cookies-from-browser", "chrome",
-                 "--skip-download", "--no-warnings", "-q",
-                 "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
-                capture_output=True, text=True, timeout=15,
-            )
-            _browser_cookies_available = probe.returncode == 0
-        except Exception:
-            _browser_cookies_available = False
+    # macOS 本地环境：直接用 Chrome 浏览器 cookies（永不过期）
+    # 注意：首次运行可能弹出 Keychain 授权弹窗，点"允许"即可
+    chrome_paths = [
+        os.path.expanduser("~/Library/Application Support/Google/Chrome"),  # macOS
+        os.path.expanduser("~/.config/google-chrome"),  # Linux
+    ]
+    chrome_exists = any(os.path.isdir(p) for p in chrome_paths)
 
-        if _browser_cookies_available:
-            logger.info("🍪 检测到本地 Chrome，使用 --cookies-from-browser chrome")
-        else:
-            logger.info("🍪 本地 Chrome 不可用，回退到 cookies 文件")
-
-    if _browser_cookies_available:
+    if chrome_exists:
         cmd.extend(["--cookies-from-browser", "chrome"])
+        logger.info("🍪 使用 --cookies-from-browser chrome（直接读取浏览器 cookies）")
         return
 
-    # 方案2：静态 cookies 文件（fallback）
+    # Fallback：静态 cookies 文件（服务器/无 Chrome 环境）
     cookies_file = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "www.youtube.com_cookies.txt",
     )
 
-    # 校验 cookies 文件完整性（完整文件 >1000 字节，含 __Secure-3PSID 等关键字段）
+    # 校验 cookies 文件完整性
     if os.path.isfile(cookies_file):
         file_size = os.path.getsize(cookies_file)
         if file_size < 1000:
