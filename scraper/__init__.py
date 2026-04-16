@@ -13,10 +13,6 @@ logger = logging.getLogger(__name__)
 
 def _get_ytdlp_bin() -> str:
     """获取 yt-dlp 可执行文件路径（优先 .venv 内的）"""
-    # 确保 deno 在 PATH 中（yt-dlp n-challenge 求解需要）
-    deno_bin = os.path.join(os.path.expanduser("~"), ".deno", "bin")
-    if os.path.isdir(deno_bin) and deno_bin not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = deno_bin + os.pathsep + os.environ.get("PATH", "")
     # 优先用项目 .venv 里的 yt-dlp
     venv_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv", "bin", "yt-dlp")
     if os.path.isfile(venv_bin):
@@ -30,29 +26,59 @@ _browser_cookies_available: bool | None = None
 _js_runtime: str | None = None  # "node", "deno", "bun" 或 ""
 
 
+def _ensure_js_paths_in_env():
+    """确保 deno / node / bun 等常见安装路径都在 PATH 中。
+    很多 AI agent 环境下 PATH 只包含系统基础路径，遗漏用户级别安装。"""
+    extra_paths = [
+        os.path.join(os.path.expanduser("~"), ".deno", "bin"),
+        os.path.join(os.path.expanduser("~"), ".local", "bin"),
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+    ]
+    # NVM 路径：扫描 ~/.nvm/versions/node/*/bin
+    nvm_dir = os.path.join(os.path.expanduser("~"), ".nvm", "versions", "node")
+    if os.path.isdir(nvm_dir):
+        try:
+            versions = sorted(os.listdir(nvm_dir), reverse=True)
+            for v in versions:
+                nbin = os.path.join(nvm_dir, v, "bin")
+                if os.path.isdir(nbin):
+                    extra_paths.append(nbin)
+                    break  # 只取最新版
+        except OSError:
+            pass
+
+    current = os.environ.get("PATH", "")
+    for p in extra_paths:
+        if os.path.isdir(p) and p not in current:
+            os.environ["PATH"] = p + os.pathsep + os.environ["PATH"]
+
+
 def _detect_js_runtime() -> str:
     """探测可用的 JS 运行时（yt-dlp 解 YouTube n-challenge 必需）。
     如果没有任何运行时，自动尝试安装 deno。"""
     global _js_runtime
     if _js_runtime is not None:
         return _js_runtime
+
     import shutil
+    _ensure_js_paths_in_env()
+
     for rt in ("deno", "node", "bun"):
-        if shutil.which(rt):
+        path = shutil.which(rt)
+        if path:
             _js_runtime = rt
-            logger.info(f"🔧 检测到 JS 运行时: {rt}")
+            logger.info(f"🔧 检测到 JS 运行时: {rt} ({path})")
             return _js_runtime
 
     # 没有任何 JS runtime —— 自动安装 deno（最轻量、yt-dlp 默认支持）
-    logger.warning("⚠️ 未检测到 JS 运行时，尝试自动安装 deno...")
+    logger.warning("⚠️ 未检测到 JS 运行时 (PATH=%s)，尝试自动安装 deno...", os.environ.get("PATH", "")[:200])
     try:
         install = subprocess.run(
             ["sh", "-c", "curl -fsSL https://deno.land/install.sh | sh"],
             capture_output=True, text=True, timeout=60,
         )
-        deno_bin = os.path.join(os.path.expanduser("~"), ".deno", "bin")
-        if os.path.isdir(deno_bin):
-            os.environ["PATH"] = deno_bin + os.pathsep + os.environ.get("PATH", "")
+        _ensure_js_paths_in_env()
         if shutil.which("deno"):
             _js_runtime = "deno"
             logger.info("✅ deno 自动安装成功")
@@ -68,10 +94,12 @@ def _detect_js_runtime() -> str:
 
 
 def _add_js_runtime_args(cmd: list[str]) -> None:
-    """为 yt-dlp 命令添加 JS 运行时参数"""
+    """为 yt-dlp 命令添加 JS 运行时 + remote-components 参数"""
     rt = _detect_js_runtime()
     if rt:
         cmd.extend(["--js-runtimes", rt])
+    # 允许 yt-dlp 从 GitHub 拉取 JS 挑战求解脚本（n-challenge 等）
+    cmd.extend(["--remote-components", "ejs:github"])
 
 
 def _add_cookies_args(cmd: list[str]) -> None:
@@ -87,8 +115,6 @@ def _add_cookies_args(cmd: list[str]) -> None:
 
     # 方案1：从本地 Chrome 浏览器读取 cookies（推荐）
     if _browser_cookies_available is None:
-        # 首次调用时探测：用 --cookies-from-browser 跑一次无害的 --version
-        # 如果环境没有浏览器（如服务器），会报错，我们就 fallback
         try:
             probe = subprocess.run(
                 [_get_ytdlp_bin(), "--cookies-from-browser", "chrome",
@@ -114,9 +140,28 @@ def _add_cookies_args(cmd: list[str]) -> None:
         os.path.dirname(os.path.dirname(__file__)),
         "www.youtube.com_cookies.txt",
     )
+
+    # 校验 cookies 文件完整性（完整文件 >1000 字节，含 __Secure-3PSID 等关键字段）
     if os.path.isfile(cookies_file):
+        file_size = os.path.getsize(cookies_file)
+        if file_size < 1000:
+            logger.warning(f"⚠️ cookies 文件可能不完整 ({file_size} 字节)，尝试从 git 恢复...")
+            try:
+                project_root = os.path.dirname(os.path.dirname(__file__))
+                subprocess.run(
+                    ["git", "checkout", "origin/main", "--", "www.youtube.com_cookies.txt"],
+                    cwd=project_root, capture_output=True, text=True, timeout=10,
+                )
+                new_size = os.path.getsize(cookies_file)
+                logger.info(f"🔄 cookies 文件已从 git 恢复 ({new_size} 字节)")
+            except Exception as e:
+                logger.warning(f"⚠️ git 恢复 cookies 失败: {e}")
+
+    if os.path.isfile(cookies_file) and os.path.getsize(cookies_file) >= 1000:
         cmd.extend(["--cookies", cookies_file])
-        logger.info(f"🍪 使用cookies文件: {cookies_file}")
+        logger.info(f"🍪 使用cookies文件: {cookies_file} ({os.path.getsize(cookies_file)} 字节)")
+    else:
+        logger.warning("⚠️ 无可用的 cookies，部分视频可能无法下载")
 
 
 def search_youtube(config: dict, query: str, max_results: int = 5) -> list[dict]:
