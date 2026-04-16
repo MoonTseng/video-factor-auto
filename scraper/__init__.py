@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -104,45 +105,47 @@ def _add_js_runtime_args(cmd: list[str]) -> None:
 def _add_cookies_args(cmd: list[str]) -> None:
     """为 yt-dlp 命令添加 cookies 参数。
     
-    策略：直接使用 --cookies-from-browser chrome（macOS 本地环境）。
-    仅当 Chrome 不存在时 fallback 到静态 cookies 文件。
+    策略：
+    1. macOS 有 Chrome → 自动从 Chrome DB 导出新鲜 cookies 文件
+    2. 无 Chrome → 用已有的静态 cookies 文件
     """
-    import platform
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    cookies_file = os.path.join(project_root, "www.youtube.com_cookies.txt")
+    export_script = os.path.join(project_root, "scripts", "export_chrome_cookies.py")
 
-    # macOS 本地环境：直接用 Chrome 浏览器 cookies（永不过期）
-    # 注意：首次运行可能弹出 Keychain 授权弹窗，点"允许"即可
-    chrome_paths = [
-        os.path.expanduser("~/Library/Application Support/Google/Chrome"),  # macOS
-        os.path.expanduser("~/.config/google-chrome"),  # Linux
-    ]
-    chrome_exists = any(os.path.isdir(p) for p in chrome_paths)
+    # macOS + Chrome 存在 → 自动导出最新 cookies
+    chrome_dir = os.path.expanduser("~/Library/Application Support/Google/Chrome")
+    if not os.path.isdir(chrome_dir):
+        chrome_dir = os.path.expanduser("~/.config/google-chrome")
 
-    if chrome_exists:
-        cmd.extend(["--cookies-from-browser", "chrome"])
-        logger.info("🍪 使用 --cookies-from-browser chrome（直接读取浏览器 cookies）")
-        return
+    if os.path.isdir(chrome_dir) and os.path.isfile(export_script):
+        # 每次运行都导出最新 cookies（防止 token rotation）
+        try:
+            logger.info("🍪 从 Chrome 导出最新 cookies...")
+            result = subprocess.run(
+                [sys.executable, export_script],
+                capture_output=True, text=True, timeout=60,
+                cwd=project_root,
+            )
+            if result.returncode == 0:
+                logger.info("🍪 Chrome cookies 导出成功")
+            else:
+                logger.warning(f"⚠️ Chrome cookies 导出失败: {result.stderr[-200:]}")
+        except Exception as e:
+            logger.warning(f"⚠️ Chrome cookies 导出异常: {e}")
 
-    # Fallback：静态 cookies 文件（服务器/无 Chrome 环境）
-    cookies_file = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "www.youtube.com_cookies.txt",
-    )
-
-    # 校验 cookies 文件完整性
+    # 校验 cookies 文件
     if os.path.isfile(cookies_file):
         file_size = os.path.getsize(cookies_file)
         if file_size < 1000:
             logger.warning(f"⚠️ cookies 文件可能不完整 ({file_size} 字节)，尝试从 git 恢复...")
             try:
-                project_root = os.path.dirname(os.path.dirname(__file__))
                 subprocess.run(
                     ["git", "checkout", "origin/main", "--", "www.youtube.com_cookies.txt"],
                     cwd=project_root, capture_output=True, text=True, timeout=10,
                 )
-                new_size = os.path.getsize(cookies_file)
-                logger.info(f"🔄 cookies 文件已从 git 恢复 ({new_size} 字节)")
-            except Exception as e:
-                logger.warning(f"⚠️ git 恢复 cookies 失败: {e}")
+            except Exception:
+                pass
 
     if os.path.isfile(cookies_file) and os.path.getsize(cookies_file) >= 1000:
         cmd.extend(["--cookies", cookies_file])
