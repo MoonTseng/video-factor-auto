@@ -25,6 +25,55 @@ def _get_ytdlp_bin() -> str:
     return "yt-dlp"
 
 
+# 缓存 --cookies-from-browser 可用性，避免每次都试
+_browser_cookies_available: bool | None = None
+
+
+def _add_cookies_args(cmd: list[str]) -> None:
+    """为 yt-dlp 命令添加 cookies 参数。
+    
+    优先级：
+    1. --cookies-from-browser chrome  (本地浏览器，永不过期)
+    2. --cookies www.youtube.com_cookies.txt  (手动导出，可能过期)
+    
+    如果两者都不可用则不添加（部分视频无需登录也能下载）。
+    """
+    global _browser_cookies_available
+
+    # 方案1：从本地 Chrome 浏览器读取 cookies（推荐）
+    if _browser_cookies_available is None:
+        # 首次调用时探测：用 --cookies-from-browser 跑一次无害的 --version
+        # 如果环境没有浏览器（如服务器），会报错，我们就 fallback
+        try:
+            probe = subprocess.run(
+                [_get_ytdlp_bin(), "--cookies-from-browser", "chrome",
+                 "--skip-download", "--no-warnings", "-q",
+                 "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+                capture_output=True, text=True, timeout=15,
+            )
+            _browser_cookies_available = probe.returncode == 0
+        except Exception:
+            _browser_cookies_available = False
+
+        if _browser_cookies_available:
+            logger.info("🍪 检测到本地 Chrome，使用 --cookies-from-browser chrome")
+        else:
+            logger.info("🍪 本地 Chrome 不可用，回退到 cookies 文件")
+
+    if _browser_cookies_available:
+        cmd.extend(["--cookies-from-browser", "chrome"])
+        return
+
+    # 方案2：静态 cookies 文件（fallback）
+    cookies_file = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "www.youtube.com_cookies.txt",
+    )
+    if os.path.isfile(cookies_file):
+        cmd.extend(["--cookies", cookies_file])
+        logger.info(f"🍪 使用cookies文件: {cookies_file}")
+
+
 def search_youtube(config: dict, query: str, max_results: int = 5) -> list[dict]:
     """
     通用 YouTube 搜索（yt-dlp 驱动）。
@@ -214,11 +263,7 @@ def download_trailer(config: dict, trailer_info: dict, output_dir: str) -> dict:
     if proxy:
         cmd.extend(["--proxy", proxy])
     
-    # 添加cookies文件
-    cookies_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "www.youtube.com_cookies.txt")
-    if os.path.isfile(cookies_file):
-        cmd.extend(["--cookies", cookies_file])
-        logger.info(f"🍪 使用cookies文件: {cookies_file}")
+    _add_cookies_args(cmd)
     
     cmd.append(video_url)
     
@@ -271,10 +316,7 @@ def _ytdlp_search(query: str, proxy: str = "", max_results: int = 10) -> list[di
     if proxy:
         cmd.extend(["--proxy", proxy])
     
-    # 添加cookies文件
-    cookies_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "www.youtube.com_cookies.txt")
-    if os.path.isfile(cookies_file):
-        cmd.extend(["--cookies", cookies_file])
+    _add_cookies_args(cmd)
     
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
@@ -363,11 +405,7 @@ def download_video(config: dict, topic: dict, output_dir: str) -> dict:
     if proxy:
         cmd.extend(["--proxy", proxy])
 
-    # 添加cookies文件
-    cookies_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "www.youtube.com_cookies.txt")
-    if os.path.isfile(cookies_file):
-        cmd.extend(["--cookies", cookies_file])
-        logger.info(f"🍪 使用cookies文件: {cookies_file}")
+    _add_cookies_args(cmd)
 
     cmd.append(video_url)
 
