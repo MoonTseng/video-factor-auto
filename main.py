@@ -318,36 +318,58 @@ def run_pipeline(config: dict, theme_name: str, target: str = None,
     else:
         logger.info(f"📤 Step 8: 多渠道发布 ({', '.join(platforms)})...")
 
-        for platform in platforms:
-            plat_info = publish_infos.get(platform, default_info)
+        def _do_upload_platform(platform, plat_info):
+            """单平台上传，返回 (platform, result_dict)"""
             try:
                 if platform == "bilibili":
-                    logger.info("   📺 上传 B站...")
                     b_bvid = _upload_bilibili(config, plat_info)
                     if b_bvid:
-                        bvid = b_bvid
-                        uploaded = True
-                        upload_results["bilibili"] = {"success": True, "bvid": b_bvid}
-                        logger.info(f"   ✅ B站上传成功! BV号: {b_bvid}")
-                    else:
-                        upload_results["bilibili"] = {"success": False, "message": "返回空BV号"}
-
+                        return platform, {"success": True, "bvid": b_bvid}
+                    return platform, {"success": False, "message": "返回空BV号"}
                 elif platform == "douyin":
-                    logger.info("   🎵 上传抖音...")
                     result = _upload_douyin(config, plat_info)
-                    upload_results["douyin"] = result
+                    return platform, result
+                else:
+                    return platform, {"success": False, "message": f"未知平台: {platform}"}
+            except Exception as e:
+                return platform, {"success": False, "message": str(e)}
+
+        # 多平台并发上传（B站+抖音可同时进行）
+        if len(platforms) > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            logger.info(f"   ⚡ 并发上传 {len(platforms)} 个平台...")
+            with ThreadPoolExecutor(max_workers=len(platforms)) as pool:
+                futures = {
+                    pool.submit(_do_upload_platform, plat, publish_infos.get(plat, default_info)): plat
+                    for plat in platforms
+                }
+                for future in as_completed(futures):
+                    plat, result = future.result()
+                    upload_results[plat] = result
                     if result.get("success"):
                         uploaded = True
-                        logger.info("   ✅ 抖音上传成功!")
+                        if plat == "bilibili":
+                            bvid = result.get("bvid")
+                            logger.info(f"   ✅ B站上传成功! BV号: {bvid}")
+                        else:
+                            logger.info(f"   ✅ {plat} 上传成功!")
                     else:
-                        logger.warning(f"   ⚠️ 抖音上传: {result.get('message', '未知错误')}")
-
+                        logger.warning(f"   ⚠️ {plat} 上传失败: {result.get('message', '未知错误')}")
+        else:
+            # 单平台直接上传
+            for platform in platforms:
+                plat_info = publish_infos.get(platform, default_info)
+                platform, result = _do_upload_platform(platform, plat_info)
+                upload_results[platform] = result
+                if result.get("success"):
+                    uploaded = True
+                    if platform == "bilibili":
+                        bvid = result.get("bvid")
+                        logger.info(f"   ✅ B站上传成功! BV号: {bvid}")
+                    else:
+                        logger.info(f"   ✅ {platform} 上传成功!")
                 else:
-                    logger.warning(f"   ⚠️ 未知平台: {platform}")
-
-            except Exception as e:
-                logger.warning(f"   ⚠️ {platform} 上传失败: {e}")
-                upload_results[platform] = {"success": False, "message": str(e)}
+                    logger.warning(f"   ⚠️ {platform} 上传失败: {result.get('message', '未知错误')}")
 
     # ── Step 9: 清理 ──────────────────────────────────────
     if uploaded:
@@ -598,25 +620,82 @@ def _build_publish_info(theme, video_info: dict, video_path: str, cover_path: st
 
 
 def _upload_bilibili(config: dict, publish_info: dict) -> Optional[str]:
-    """上传到 B站，返回 BV号"""
+    """上传到 B站，返回 BV号
+
+    策略: biliup CLI (Rust) 优先 → bilibili_api (Python) 兜底
+    biliup 内置指数退避重试(3次)，失败则自动回退 Python SDK。
+    记录详细耗时和错误信息。
+    """
+    import time as _time
+
+    upload_kwargs = dict(
+        config=config,
+        video_path=publish_info["video_path"],
+        title=publish_info["title"],
+        desc=publish_info["description"],
+        tags=publish_info["tags"],
+        cover_path=publish_info.get("cover_path"),
+        source_url=publish_info.get("source", "YouTube"),
+        tid=publish_info["tid"],
+    )
+
+    upload_start = _time.time()
+    errors = []
+
+    # ── 1) 优先 biliup CLI (Rust, 内置重试) ──
+    try:
+        import shutil
+        if shutil.which("biliup"):
+            logger.info("   🚀 尝试 biliup CLI (Rust) 上传...")
+            from uploader import upload_via_biliup
+            result = upload_via_biliup(**upload_kwargs)
+            bvid = result.get("bvid", "") if isinstance(result, dict) else result
+            elapsed = _time.time() - upload_start
+            if bvid:
+                logger.info(f"   ✅ biliup 上传成功: {bvid} (总耗时 {elapsed:.0f}s)")
+                return bvid
+            errors.append({"method": "biliup", "error": "返回空BV号",
+                          "seconds": round(elapsed, 1)})
+            logger.warning("   ⚠️ biliup 返回空BV号，回退到 bilibili_api...")
+        else:
+            logger.info("   ℹ️ biliup CLI 未安装，使用 bilibili_api...")
+    except Exception as e:
+        elapsed = _time.time() - upload_start
+        err_msg = str(e)[:300]
+        errors.append({"method": "biliup", "error": err_msg,
+                      "seconds": round(elapsed, 1)})
+        # Cookie 过期直接报错，不浪费时间回退
+        if "cookie" in err_msg.lower() or "过期" in err_msg:
+            logger.error(f"   🔑 Cookie 过期，跳过 bilibili_api 回退: {err_msg}")
+            return None
+        logger.warning(f"   ⚠️ biliup 上传失败: {err_msg}，回退到 bilibili_api...")
+
+    # ── 2) 兜底 bilibili_api (Python) ──
+    fallback_start = _time.time()
     try:
         from uploader import upload_to_bilibili
-        result = upload_to_bilibili(
-            config,
-            video_path=publish_info["video_path"],
-            title=publish_info["title"],
-            desc=publish_info["description"],
-            tags=publish_info["tags"],
-            tid=publish_info["tid"],
-            cover_path=publish_info.get("cover_path"),
-            source_url=publish_info.get("source", "YouTube"),
-        )
-        # result 可能是 dict 或 str(bvid)
+        result = upload_to_bilibili(**upload_kwargs)
+        elapsed = _time.time() - upload_start
         if isinstance(result, dict):
-            return result.get("bvid", result.get("aid", str(result)))
-        return result
+            bvid = result.get("bvid", result.get("aid", str(result)))
+        else:
+            bvid = result
+        if bvid:
+            logger.info(f"   ✅ bilibili_api 上传成功: {bvid} (总耗时 {elapsed:.0f}s)")
+        return bvid
     except ImportError:
         logger.warning("⚠️ uploader 模块未安装")
+        errors.append({"method": "bilibili_api", "error": "模块未安装"})
+        return None
+    except Exception as e:
+        elapsed = _time.time() - upload_start
+        err_msg = str(e)[:300]
+        errors.append({"method": "bilibili_api", "error": err_msg,
+                      "seconds": round(elapsed, 1)})
+        logger.error(f"❌ bilibili_api 上传也失败 (总耗时 {elapsed:.0f}s): {err_msg}")
+        # 记录详细错误到日志，方便排查
+        if errors:
+            logger.error(f"   📋 上传错误汇总: {errors}")
         return None
 
 

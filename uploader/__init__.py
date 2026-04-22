@@ -586,6 +586,58 @@ def _extract_work_name(title: str) -> str:
 #  biliup CLI 上传（开源 Rust 实现，更快更稳定）
 # ═══════════════════════════════════════════════════════
 
+def _verify_video_file(video_path: str) -> dict:
+    """上传前用 ffprobe 校验视频文件完整性，返回文件信息"""
+    import subprocess
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"视频文件不存在: {video_path}")
+
+    file_size = os.path.getsize(video_path)
+    if file_size < 1024:  # 小于 1KB 肯定不是有效视频
+        raise ValueError(f"视频文件太小({file_size} bytes)，可能损坏: {video_path}")
+
+    try:
+        probe_cmd = [
+            "ffprobe", "-v", "quiet", "-print_format", "json",
+            "-show_format", "-show_streams", video_path
+        ]
+        probe = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+        if probe.returncode != 0:
+            raise ValueError(f"ffprobe 校验失败: {probe.stderr[:200]}")
+
+        info = json.loads(probe.stdout)
+        duration = float(info.get("format", {}).get("duration", 0))
+        has_video = any(s["codec_type"] == "video" for s in info.get("streams", []))
+        has_audio = any(s["codec_type"] == "audio" for s in info.get("streams", []))
+
+        if not has_video:
+            raise ValueError("视频文件无视频流")
+        if duration < 1:
+            raise ValueError(f"视频时长异常: {duration:.1f}s")
+
+        return {
+            "file_size_mb": file_size / 1024 / 1024,
+            "duration": duration,
+            "has_audio": has_audio,
+        }
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        # ffprobe 不可用时跳过校验
+        logger.warning("⚠️ ffprobe 不可用，跳过视频校验")
+        return {"file_size_mb": file_size / 1024 / 1024, "duration": 0, "has_audio": True}
+
+
+def _check_cookie_freshness(cookie_file: Path) -> bool:
+    """检查 cookie 是否可能过期（超过 25 天未更新）"""
+    if not cookie_file.exists():
+        return False
+    age_days = (time.time() - cookie_file.stat().st_mtime) / 86400
+    if age_days > 25:
+        logger.warning(f"⚠️ Cookie 已 {age_days:.0f} 天未更新，可能已过期！"
+                       f"\n   建议重新登录: biliup login")
+        return False
+    return True
+
+
 def upload_via_biliup(
     config: dict,
     video_path: str,
@@ -595,6 +647,7 @@ def upload_via_biliup(
     cover_path: str = None,
     source_url: str = "",
     tid: int = None,
+    max_retries: int = 3,
 ) -> dict:
     """
     使用 biliup CLI (Rust) 上传视频到B站。
@@ -602,8 +655,15 @@ def upload_via_biliup(
     优点：上传速度更快、并发分块、更稳定。
     需要 cookies.json 在项目根目录（从 .bili_credential.json 自动转换）。
 
+    特性：
+    - 上传前 ffprobe 校验视频完整性
+    - 根据文件大小自动调整超时（100MB/min 基准）
+    - 指数退避重试（最多 max_retries 次）
+    - Cookie 过期自动检测提醒
+    - 耗时统计
+
     返回:
-        {"bvid": "BV...", "aid": 12345, "url": "..."}
+        {"bvid": "BV...", "aid": 12345, "url": "...", "upload_seconds": N}
     """
     import subprocess
 
@@ -611,11 +671,13 @@ def upload_via_biliup(
     project_root = Path(__file__).parent.parent
     cookie_file = project_root / "cookies.json"
 
+    # ── 上传前校验 ──
+    video_info = _verify_video_file(video_path)
+    file_size_mb = video_info["file_size_mb"]
+
     # 确保 cookies.json 存在（从 .bili_credential.json 自动转换）
     _ensure_biliup_cookies(project_root, cookie_file)
-
-    if not os.path.exists(video_path):
-        raise FileNotFoundError(f"视频文件不存在: {video_path}")
+    _check_cookie_freshness(cookie_file)
 
     # 参数处理
     if tags is None:
@@ -664,41 +726,86 @@ def upload_via_biliup(
         cmd.extend(["--cover", actual_cover])
     cmd.append(video_path)
 
-    # 执行上传
-    file_size_mb = os.path.getsize(video_path) / 1024 / 1024
+    # 动态超时：100MB/min 基准，最低 300s，最高 7200s
+    timeout = max(300, min(7200, int(file_size_mb / 100 * 60) + 300))
+
     logger.info(f"🚀 biliup 上传: 《{title}》({file_size_mb:.1f}MB)")
     logger.info(f"   分区={tid}, 标签={tag_str}, 版权={'原创' if copyright_type == 1 else '转载'}")
+    if video_info.get("duration"):
+        logger.info(f"   视频时长: {video_info['duration']:.0f}s, 超时: {timeout}s")
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    # ── 指数退避重试上传 ──
+    last_error = None
+    for attempt in range(max_retries):
+        t_start = time.time()
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            elapsed = time.time() - t_start
+
+            if result.returncode == 0:
+                # 解析输出，提取 BV 号
+                output = result.stdout + result.stderr
+                logger.info(f"📋 biliup 输出:\n{output}")
+
+                bvid = ""
+                aid = ""
+                bv_match = re.search(r'(BV[\w]+)', output)
+                if bv_match:
+                    bvid = bv_match.group(1)
+                aid_match = re.search(r'"aid"\s*:\s*(\d+)', output)
+                if aid_match:
+                    aid = int(aid_match.group(1))
+
+                url = f"https://www.bilibili.com/video/{bvid}" if bvid else ""
+                speed = file_size_mb / elapsed * 60 if elapsed > 0 else 0
+
+                # 清理临时封面
+                if temp_cover and os.path.exists(temp_cover):
+                    os.unlink(temp_cover)
+
+                if bvid:
+                    logger.info(f"🎉 发布成功! {url} (耗时 {elapsed:.0f}s, {speed:.0f}MB/min)")
+                else:
+                    logger.warning(f"⚠️ 上传完成但未解析到 BV 号 (耗时 {elapsed:.0f}s)")
+
+                return {"bvid": bvid, "aid": aid, "url": url,
+                        "raw_output": output, "upload_seconds": round(elapsed, 1)}
+
+            # 上传失败
+            error_output = result.stderr + result.stdout
+            last_error = error_output[:500]
+
+            # 检测 cookie 过期特征
+            cookie_expired = any(kw in error_output.lower() for kw in
+                                 ["expired", "login", "cookie", "credential", "auth", "未登录", "过期"])
+            if cookie_expired:
+                logger.error(f"🔑 Cookie 可能已过期! 请重新登录:\n   biliup login")
+                raise RuntimeError(f"Cookie 过期: {last_error}")
+
+            if attempt < max_retries - 1:
+                wait = (2 ** attempt) * 10  # 10s, 20s, 40s
+                logger.warning(f"⚠️ biliup 上传失败 (第 {attempt+1}/{max_retries} 次), "
+                               f"{wait}s 后重试...\n   错误: {last_error[:200]}")
+                time.sleep(wait)
+            else:
+                logger.error(f"❌ biliup 上传失败 ({max_retries} 次重试均失败):\n{last_error}")
+
+        except subprocess.TimeoutExpired:
+            elapsed = time.time() - t_start
+            last_error = f"上传超时({timeout}s, 文件 {file_size_mb:.0f}MB)"
+            if attempt < max_retries - 1:
+                wait = (2 ** attempt) * 15
+                logger.warning(f"⏰ {last_error}, {wait}s 后重试 ({attempt+1}/{max_retries})...")
+                time.sleep(wait)
+                timeout = int(timeout * 1.5)  # 超时时加大下次超时时间
+            else:
+                logger.error(f"❌ {last_error} ({max_retries} 次均超时)")
 
     # 清理临时封面
     if temp_cover and os.path.exists(temp_cover):
         os.unlink(temp_cover)
 
-    if result.returncode != 0:
-        logger.error(f"❌ biliup 上传失败:\n{result.stderr}\n{result.stdout}")
-        raise RuntimeError(f"biliup 上传失败: {result.stderr}")
-
-    # 解析输出，提取 BV 号
-    output = result.stdout + result.stderr
-    logger.info(f"📋 biliup 输出:\n{output}")
-
-    bvid = ""
-    aid = ""
-    bv_match = re.search(r'(BV[\w]+)', output)
-    if bv_match:
-        bvid = bv_match.group(1)
-    aid_match = re.search(r'"aid"\s*:\s*(\d+)', output)
-    if aid_match:
-        aid = int(aid_match.group(1))
-
-    url = f"https://www.bilibili.com/video/{bvid}" if bvid else ""
-    if bvid:
-        logger.info(f"🎉 发布成功! {url}")
-    else:
-        logger.warning(f"⚠️ 上传完成但未解析到 BV 号")
-
-    return {"bvid": bvid, "aid": aid, "url": url, "raw_output": output}
+    raise RuntimeError(f"biliup 上传失败 ({max_retries} 次): {last_error}")
 
 
 def _ensure_biliup_cookies(project_root: Path, cookie_file: Path):
