@@ -27,6 +27,7 @@ import os
 import re
 import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Union, Optional
 
 import yaml
@@ -316,6 +317,8 @@ def run_pipeline(config: dict, theme_name: str, target: str = None,
     if config.get("_no_upload"):
         logger.info("⏭️ Step 8: 跳过上传 (--no-upload)")
     else:
+        # 上传前磁盘/网络预检
+        _pre_upload_check(output_path)
         logger.info(f"📤 Step 8: 多渠道发布 ({', '.join(platforms)})...")
 
         def _do_upload_platform(platform, plat_info):
@@ -371,12 +374,23 @@ def run_pipeline(config: dict, theme_name: str, target: str = None,
                 else:
                     logger.warning(f"   ⚠️ {platform} 上传失败: {result.get('message', '未知错误')}")
 
+    # 保存上传结果到 publish_info（供断点续传和记录查询）
+    if upload_results:
+        result_file = os.path.join(output_dir, "upload_results.json")
+        _save_json({
+            "timestamp": datetime.now().isoformat(),
+            "uploaded": uploaded,
+            "results": upload_results,
+        }, result_file)
+        logger.info(f"   💾 上传结果已保存到 {result_file}")
+
     # ── Step 9: 清理 ──────────────────────────────────────
     if uploaded:
         logger.info("🧹 Step 9: 清理本地文件...")
         _cleanup(run_dir, keep_publish_info=True)
     else:
-        logger.info("⏭️ Step 9: 跳过清理（未上传成功）")
+        logger.info("⏭️ Step 9: 跳过清理（未上传成功，保留文件供重试）")
+        logger.info(f"   💡 重试上传: python main.py --retry {run_dir}")
 
     # ── 完成 ──────────────────────────────────────────────
     print()
@@ -619,6 +633,39 @@ def _build_publish_info(theme, video_info: dict, video_path: str, cover_path: st
     }
 
 
+def _pre_upload_check(video_path: str):
+    """上传前快速预检：文件存在性、磁盘空间、网络连通性"""
+    import shutil
+
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"上传文件不存在: {video_path}")
+
+    file_size_mb = os.path.getsize(video_path) / 1024 / 1024
+    logger.info(f"   📦 上传文件: {file_size_mb:.1f}MB — {os.path.basename(video_path)}")
+
+    # 检查磁盘空间（至少需要文件大小 0.5 倍的临时空间）
+    try:
+        disk = shutil.disk_usage(os.path.dirname(video_path))
+        free_gb = disk.free / 1024 / 1024 / 1024
+        if free_gb < 1.0:
+            logger.warning(f"   ⚠️ 磁盘剩余空间不足: {free_gb:.1f}GB，上传可能失败")
+        else:
+            logger.info(f"   💾 磁盘可用: {free_gb:.1f}GB")
+    except Exception:
+        pass
+
+    # 网络连通性检查（快速 ping B站 API）
+    try:
+        import httpx
+        resp = httpx.head("https://member.bilibili.com", timeout=5, follow_redirects=True)
+        if resp.status_code < 500:
+            logger.info("   🌐 B站 API 可达")
+        else:
+            logger.warning(f"   ⚠️ B站 API 响应异常: HTTP {resp.status_code}")
+    except Exception as e:
+        logger.warning(f"   ⚠️ 网络检查失败: {e}，上传可能受影响")
+
+
 def _upload_bilibili(config: dict, publish_info: dict) -> Optional[str]:
     """上传到 B站，返回 BV号
 
@@ -735,20 +782,35 @@ def _fallback_cover(video_path: str, cover_path: str):
 
 
 def _cleanup(run_dir: str, keep_publish_info: bool = True):
-    """清理运行目录，只保留发布信息"""
+    """清理运行目录，保留元数据 + 封面 + 字幕
+
+    保留: run_info.json, publish_info*.json, upload_results.json,
+          cover.jpg, subtitles.srt, script/
+    删除: source/(原始视频+音频), output/*.mp4(合成视频), audio/
+    """
     import shutil
 
     if keep_publish_info:
-        # 保留 run_info.json 和 output/publish_info.json
-        for subdir in ["source", "audio", "script"]:
+        # 删除原始下载（最占空间）
+        for subdir in ["source", "audio"]:
             path = os.path.join(run_dir, subdir)
             if os.path.isdir(path):
+                size_mb = sum(
+                    f.stat().st_size for f in Path(path).rglob("*") if f.is_file()
+                ) / 1024 / 1024
                 shutil.rmtree(path)
-        # 删除大的视频文件
+                logger.info(f"   🗑️ 删除 {subdir}/ ({size_mb:.1f}MB)")
+
+        # 删除 output/ 下的大视频文件（保留封面、json、srt）
         output_dir = os.path.join(run_dir, "output")
-        for f in os.listdir(output_dir):
-            if f.endswith(".mp4"):
-                os.remove(os.path.join(output_dir, f))
+        if os.path.isdir(output_dir):
+            keep_exts = {".json", ".srt", ".jpg", ".png", ".txt"}
+            for f in os.listdir(output_dir):
+                fpath = os.path.join(output_dir, f)
+                if os.path.isfile(fpath) and os.path.splitext(f)[1] not in keep_exts:
+                    size_mb = os.path.getsize(fpath) / 1024 / 1024
+                    os.remove(fpath)
+                    logger.info(f"   🗑️ 删除 output/{f} ({size_mb:.1f}MB)")
     else:
         shutil.rmtree(run_dir)
 

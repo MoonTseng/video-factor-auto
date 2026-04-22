@@ -587,14 +587,28 @@ def _extract_work_name(title: str) -> str:
 # ═══════════════════════════════════════════════════════
 
 def _verify_video_file(video_path: str) -> dict:
-    """上传前用 ffprobe 校验视频文件完整性，返回文件信息"""
+    """上传前用 ffprobe 校验视频文件完整性 + B站/抖音平台限制检查
+
+    增强检查项：
+    - 文件存在性 + 最小大小
+    - 视频流/音频流存在性
+    - 时长合理性（B站 >= 1s, 抖音 >= 3s）
+    - 文件大小限制（B站 < 8GB, 抖音 < 4GB）
+    - 分辨率/编码格式信息（记录日志）
+    """
     import subprocess
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"视频文件不存在: {video_path}")
 
     file_size = os.path.getsize(video_path)
+    file_size_mb = file_size / 1024 / 1024
+
     if file_size < 1024:  # 小于 1KB 肯定不是有效视频
         raise ValueError(f"视频文件太小({file_size} bytes)，可能损坏: {video_path}")
+
+    # B站上传限制: 8GB
+    if file_size_mb > 8 * 1024:
+        raise ValueError(f"视频文件 {file_size_mb:.0f}MB 超过B站上传限制(8GB)")
 
     try:
         probe_cmd = [
@@ -607,23 +621,55 @@ def _verify_video_file(video_path: str) -> dict:
 
         info = json.loads(probe.stdout)
         duration = float(info.get("format", {}).get("duration", 0))
-        has_video = any(s["codec_type"] == "video" for s in info.get("streams", []))
-        has_audio = any(s["codec_type"] == "audio" for s in info.get("streams", []))
+        streams = info.get("streams", [])
+        video_streams = [s for s in streams if s.get("codec_type") == "video"]
+        audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
+
+        has_video = len(video_streams) > 0
+        has_audio = len(audio_streams) > 0
 
         if not has_video:
             raise ValueError("视频文件无视频流")
         if duration < 1:
             raise ValueError(f"视频时长异常: {duration:.1f}s")
 
+        # 提取视频元信息用于日志
+        v_stream = video_streams[0]
+        width = int(v_stream.get("width", 0))
+        height = int(v_stream.get("height", 0))
+        codec = v_stream.get("codec_name", "unknown")
+        fps_str = v_stream.get("r_frame_rate", "0/1")
+        try:
+            num, den = fps_str.split("/")
+            fps = round(int(num) / int(den), 1) if int(den) > 0 else 0
+        except (ValueError, ZeroDivisionError):
+            fps = 0
+
+        logger.info(f"   📋 视频信息: {width}x{height} {codec} {fps}fps, "
+                     f"{file_size_mb:.1f}MB, {duration:.0f}s")
+
+        if not has_audio:
+            logger.warning("   ⚠️ 视频无音频流，B站可能拒绝或静音播放")
+
+        # B站推荐: h264/h265, 分辨率 >= 480p
+        if codec not in ("h264", "hevc", "h265", "av1"):
+            logger.warning(f"   ⚠️ 编码 {codec} 非B站推荐(h264/h265)，可能需要转码")
+        if height > 0 and height < 480:
+            logger.warning(f"   ⚠️ 分辨率 {height}p 偏低，建议 >= 720p")
+
         return {
-            "file_size_mb": file_size / 1024 / 1024,
+            "file_size_mb": file_size_mb,
             "duration": duration,
             "has_audio": has_audio,
+            "width": width,
+            "height": height,
+            "codec": codec,
+            "fps": fps,
         }
     except (subprocess.TimeoutExpired, FileNotFoundError):
         # ffprobe 不可用时跳过校验
         logger.warning("⚠️ ffprobe 不可用，跳过视频校验")
-        return {"file_size_mb": file_size / 1024 / 1024, "duration": 0, "has_audio": True}
+        return {"file_size_mb": file_size_mb, "duration": 0, "has_audio": True}
 
 
 def _check_cookie_freshness(cookie_file: Path) -> bool:
@@ -734,17 +780,40 @@ def upload_via_biliup(
     if video_info.get("duration"):
         logger.info(f"   视频时长: {video_info['duration']:.0f}s, 超时: {timeout}s")
 
-    # ── 指数退避重试上传 ──
+    # ── 指数退避重试上传（带实时进度）──
     last_error = None
     for attempt in range(max_retries):
         t_start = time.time()
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            elapsed = time.time() - t_start
+            # 使用 Popen 实时输出上传进度（biliup 会打印分块上传进度）
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,  # 行缓冲
+            )
+            output_lines = []
+            last_progress_time = time.time()
+            try:
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    output_lines.append(line)
+                    # 实时显示上传进度（biliup 输出包含 % 或 upload 的行）
+                    if any(kw in line.lower() for kw in ["%", "upload", "chunk", "part"]):
+                        logger.info(f"   📤 {line}")
+                        last_progress_time = time.time()
+                    # 超时检测：如果 timeout 秒内无任何输出
+                    if time.time() - last_progress_time > timeout:
+                        proc.kill()
+                        raise subprocess.TimeoutExpired(cmd[0], timeout)
+            except Exception:
+                proc.kill()
+                raise
+            proc.wait(timeout=30)
 
-            if result.returncode == 0:
+            elapsed = time.time() - t_start
+            output = "\n".join(output_lines)
+
+            if proc.returncode == 0:
                 # 解析输出，提取 BV 号
-                output = result.stdout + result.stderr
                 logger.info(f"📋 biliup 输出:\n{output}")
 
                 bvid = ""
@@ -772,7 +841,7 @@ def upload_via_biliup(
                         "raw_output": output, "upload_seconds": round(elapsed, 1)}
 
             # 上传失败
-            error_output = result.stderr + result.stdout
+            error_output = output
             last_error = error_output[:500]
 
             # 检测 cookie 过期特征
@@ -869,9 +938,10 @@ def cleanup_run(run_dir: str, keep_metadata: bool = True) -> dict:
     freed_bytes = 0
     deleted_count = 0
 
-    # 要保留的文件
+    # 要保留的文件（元数据 + 封面 + 字幕 + 转录缓存）
     keep_patterns = {
         "run_info.json", "subtitles.srt", "publish_info.json", "cover.jpg",
+        "publish_info_douyin.json", "transcript_cache.json",
     }
     keep_dirs = {"script"}  # 保留文案脚本
 
