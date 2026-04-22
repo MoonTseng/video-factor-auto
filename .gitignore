@@ -56,3 +56,4 @@ cookies_biliup.json
 *.log
 www.youtube.com_cookies.txt
 scripts/test_unlock.sh
+models/

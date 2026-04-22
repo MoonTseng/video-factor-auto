@@ -220,7 +220,7 @@ async def _upload_video_async(
     source_url: str = "",
     tid: int = None,
 ) -> dict:
-    """异步上传视频到B站"""
+    """异步上传视频到B站（带重试、线路选择、超时控制、进度百分比）"""
     from bilibili_api.video_uploader import (
         VideoUploader,
         VideoUploaderPage,
@@ -252,7 +252,6 @@ async def _upload_video_async(
     copyright_type = bili_cfg.get("copyright", 2)
     is_original = copyright_type == 1
     source = source_url or bili_cfg.get("default_source", "YouTube")
-
     # ── 构建上传页 ────────────────────────────────────
     page = VideoUploaderPage(
         path=video_path,
@@ -294,68 +293,138 @@ async def _upload_video_async(
 
     meta = VideoMeta(**meta_kwargs)
 
-    # ── 创建上传器 ────────────────────────────────────
-    uploader_kwargs = dict(
-        pages=[page],
-        meta=meta,
-        credential=credential,
-    )
-    if cover_path and os.path.exists(cover_path):
-        uploader_kwargs["cover"] = cover_path
+    # ── 上传线路选择 ──────────────────────────────────
+    upload_lines = bili_cfg.get("upload_lines", "AUTO")
+    # 线路优先级: AUTO 自动选最快, kodo 七牛云, bda2 百度, ws 网宿, qn 轻量
+    LINES_FALLBACK = ["kodo", "bda2", "ws", "qn"]
 
-    uploader = VideoUploader(**uploader_kwargs)
+    # ── 创建上传器(带线路) ─────────────────────────────
+    def _create_uploader(line: str = None):
+        uploader_kwargs = dict(
+            pages=[page],
+            meta=meta,
+            credential=credential,
+        )
+        if cover_path and os.path.exists(cover_path):
+            uploader_kwargs["cover"] = cover_path
+        if line and line != "AUTO":
+            try:
+                from bilibili_api.video_uploader import Lines
+                line_enum = getattr(Lines, line.upper(), None)
+                if line_enum:
+                    uploader_kwargs["line"] = line_enum
+                    logger.info(f"   📡 使用上传线路: {line.upper()}")
+            except (ImportError, AttributeError):
+                pass  # bilibili_api 版本不支持 Lines, 用默认
+        return VideoUploader(**uploader_kwargs)
 
-    # ── 事件监听 ─────────────────────────────────────
+    # ── 事件监听(带进度百分比) ─────────────────────────
     file_size_mb = os.path.getsize(video_path) / 1024 / 1024
-    chunk_count = 0
+    # 估算分块数(bilibili_api 默认 ~5MB/chunk)
+    estimated_chunks = max(1, int(file_size_mb / 5))
+    upload_state = {"chunk_count": 0, "start_time": 0}
 
-    @uploader.on(VideoUploaderEvents.PREUPLOAD.value)
-    async def on_preupload(data):
-        logger.info(f"📤 开始上传: {os.path.basename(video_path)} ({file_size_mb:.1f}MB)")
+    def _attach_events(uploader):
+        """给上传器绑定事件监听"""
+        upload_state["chunk_count"] = 0
+        upload_state["start_time"] = time.time()
 
-    @uploader.on(VideoUploaderEvents.PRE_PAGE.value)
-    async def on_pre_page(data):
-        logger.info(f"📦 准备上传分P...")
+        @uploader.on(VideoUploaderEvents.PREUPLOAD.value)
+        async def on_preupload(data):
+            upload_state["start_time"] = time.time()
+            logger.info(f"📤 开始上传: {os.path.basename(video_path)} ({file_size_mb:.1f}MB)")
 
-    @uploader.on(VideoUploaderEvents.AFTER_CHUNK.value)
-    async def on_after_chunk(data):
-        nonlocal chunk_count
-        chunk_count += 1
-        if chunk_count % 10 == 0:
-            logger.info(f"  ⏳ 已上传 {chunk_count} 个分块...")
+        @uploader.on(VideoUploaderEvents.PRE_PAGE.value)
+        async def on_pre_page(data):
+            logger.info(f"📦 准备上传分P...")
 
-    @uploader.on(VideoUploaderEvents.PRE_COVER.value)
-    async def on_pre_cover(data):
-        logger.info("🖼️ 上传封面...")
+        @uploader.on(VideoUploaderEvents.AFTER_CHUNK.value)
+        async def on_after_chunk(data):
+            upload_state["chunk_count"] += 1
+            cnt = upload_state["chunk_count"]
+            pct = min(99, int(cnt / estimated_chunks * 100))
+            elapsed = time.time() - upload_state["start_time"]
+            speed = (cnt * 5) / elapsed if elapsed > 0 else 0
+            if cnt % 5 == 0 or pct >= 95:
+                logger.info(f"  ⏳ 上传进度: {pct}% ({cnt} chunks, {speed:.1f}MB/s)")
 
-    @uploader.on(VideoUploaderEvents.PRE_SUBMIT.value)
-    async def on_pre_submit(data):
-        logger.info("📋 提交稿件...")
+        @uploader.on(VideoUploaderEvents.PRE_COVER.value)
+        async def on_pre_cover(data):
+            logger.info("🖼️ 上传封面...")
 
-    @uploader.on(VideoUploaderEvents.COMPLETED.value)
-    async def on_completed(data):
-        logger.info("✅ 上传完成！")
+        @uploader.on(VideoUploaderEvents.PRE_SUBMIT.value)
+        async def on_pre_submit(data):
+            logger.info("📋 提交稿件...")
 
-    @uploader.on(VideoUploaderEvents.FAILED.value)
-    async def on_failed(data):
-        logger.error(f"❌ 上传失败: {data}")
+        @uploader.on(VideoUploaderEvents.COMPLETED.value)
+        async def on_completed(data):
+            elapsed = time.time() - upload_state["start_time"]
+            logger.info(f"✅ 上传完成！耗时 {elapsed:.0f}s, 平均 {file_size_mb/elapsed:.1f}MB/s")
 
-    # ── 执行上传 ─────────────────────────────────────
+        @uploader.on(VideoUploaderEvents.FAILED.value)
+        async def on_failed(data):
+            logger.error(f"❌ 上传失败: {data}")
+
+    # ── 带重试+线路切换的上传执行 ────────────────────────
     logger.info(f"🎬 B站上传: 《{title}》")
     logger.info(f"   分区={tid}, 标签={tags}, 版权={'原创' if is_original else '转载'}")
+    logger.info(f"   文件={file_size_mb:.1f}MB, 线路={upload_lines}")
 
-    result = await uploader.start()
+    max_retries = 3
+    last_error = None
+
+    # 构建线路尝试列表
+    if upload_lines == "AUTO":
+        lines_to_try = ["AUTO"] + LINES_FALLBACK[:max_retries - 1]
+    else:
+        lines_to_try = [upload_lines] + [l for l in LINES_FALLBACK if l != upload_lines]
+    lines_to_try = lines_to_try[:max_retries]
+
+    for attempt, line in enumerate(lines_to_try):
+        try:
+            uploader = _create_uploader(line)
+            _attach_events(uploader)
+
+            # 超时控制: 按文件大小动态计算(至少5分钟, 每100MB加5分钟)
+            timeout_sec = max(300, int(file_size_mb / 100 * 300) + 300)
+
+            result = await asyncio.wait_for(
+                uploader.start(),
+                timeout=timeout_sec,
+            )
+
+            # ── 解析结果 ─────────────────────────────────
+            if result and isinstance(result, dict):
+                bvid = result.get("bvid", "")
+                aid = result.get("aid", "")
+                url = f"https://www.bilibili.com/video/{bvid}" if bvid else ""
+                logger.info(f"🎉 发布成功! {url}")
+                # 清理临时封面
+                if temp_cover and os.path.exists(temp_cover):
+                    os.remove(temp_cover)
+                return {"bvid": bvid, "aid": aid, "url": url, "raw": result}
+            else:
+                last_error = f"提交结果异常: {result}"
+                logger.warning(f"⚠️ {last_error}")
+
+        except asyncio.TimeoutError:
+            last_error = f"上传超时 ({timeout_sec}s)"
+            logger.warning(f"⏰ 第 {attempt+1}/{max_retries} 次上传超时 (线路={line})")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"❌ 第 {attempt+1}/{max_retries} 次上传失败 (线路={line}): {e}")
+
+        if attempt < len(lines_to_try) - 1:
+            next_line = lines_to_try[attempt + 1]
+            wait = (attempt + 1) * 5
+            logger.info(f"   🔄 {wait}s 后切换线路 {next_line} 重试...")
+            await asyncio.sleep(wait)
 
     # ── 解析结果 ─────────────────────────────────────
-    if result and isinstance(result, dict):
-        bvid = result.get("bvid", "")
-        aid = result.get("aid", "")
-        url = f"https://www.bilibili.com/video/{bvid}" if bvid else ""
-        logger.info(f"🎉 发布成功! {url}")
-        return {"bvid": bvid, "aid": aid, "url": url, "raw": result}
-    else:
-        logger.warning(f"⚠️ 提交结果: {result}")
-        return {"raw": result}
+    # 清理临时封面
+    if temp_cover and os.path.exists(temp_cover):
+        os.remove(temp_cover)
+    raise RuntimeError(f"B站上传失败(重试 {max_retries} 次): {last_error}")
 
 
 def upload_to_bilibili(
